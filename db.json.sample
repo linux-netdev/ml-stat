@@ -1,0 +1,22 @@
+{
+  "mailmap": [
+    [
+      "<person@domain.com>",
+      "Full Name <person@work.com>"
+    ],
+    [
+      "<someone@somewhere.com>",
+      "Some One <an@email.com>"
+    ]
+  ],
+  "corpmap": [
+    [
+      "@needle.com>",
+      "Needles Inc"
+    ],
+    [
+      "@work.com>",
+      "WhereWeWork"
+    ]
+  ]
+}

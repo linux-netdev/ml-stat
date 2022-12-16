@@ -41,3 +41,12 @@ address, second value is the target with a full name.
 `mailmap` is applied before the `cropmap`.
 
 Sample email map is provided as `db.json.sample`.
+
+Ideas
+-----
+
+1. Find the ratio of fixes vs features, with fixes broken down to
+   fixes for own bugs introduced vs others introduced.
+
+2. Compute the generality score to find out which developers are
+   silo'ed into their own drivers vs work cross-tree.

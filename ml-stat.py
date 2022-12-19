@@ -168,6 +168,9 @@ def prep_files(file_dir, git_dir, n):
     # os.listdir
     # os.path import isfile, join
 
+    if not os.path.isdir(file_dir):
+        os.mkdir(file_dir)
+
     files = set()
     for f in os.listdir(file_dir):
         if not os.path.isfile(os.path.join(file_dir, f)):

@@ -42,6 +42,19 @@ address, second value is the target with a full name.
 
 Sample email map is provided as `db.json.sample`.
 
+Other scripts
+-------------
+
+There are also auxuliary scripts which don't do true mailing list data.
+
+::
+
+  $ git log v6.0..v6.1 --no-merges \
+    --committer=kuba@kernel --committer=davem@davemloft.net \
+    --committer=pabeni@redhat.com -- \
+    net/ drivers/net/ include/net/ | \
+      awk -f $repo_path/review_count.awk
+
 Ideas
 -----
 

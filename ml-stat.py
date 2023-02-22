@@ -31,9 +31,13 @@ class EmailMsg:
     def is_pr(self):
         return self.subject().find('pull req') != -1
 
+    def is_bugzilla_forward(self):
+        subj = self.subject()
+        return subj.find('Fw: [Bug ') != -1
+
     def is_discussion(self):
         subj = self.subject()
-        return not self.is_pr() and (subj.find('[') == -1 and subj.find(']') == -1)
+        return (not self.is_pr() and (subj.find('[') == -1 and subj.find(']') == -1)) or self.is_bugzilla_forward()
 
     def is_unknown(self):
         return not self.is_patch() and not self.is_discussion() and not self.is_pr()
@@ -88,9 +92,13 @@ class EmailThread:
     def is_pr(self):
         return self.root_subj().find('pull req') != -1
 
+    def is_bugzilla_forward(self):
+        subj = self.root_subj()
+        return subj.find('Fw: [Bug ') != -1
+
     def is_discussion(self):
         subj = self.root_subj()
-        return not self.is_pr() and (subj.find('[') == -1 and subj.find(']') == -1)
+        return (not self.is_pr() and (subj.find('[') == -1 and subj.find(']') == -1)) or self.is_bugzilla_forward()
 
     def is_unknown(self):
         return not self.is_patch() and not self.is_discussion() and not self.is_pr()
@@ -237,14 +245,14 @@ def name_selfcheck(ppl_stat):
             print(f"{n}: {names[n]}")
 
 
-def group_one_msg(msg, stats):
+def group_one_msg(msg, stats, force_root=False):
         refs = set()
         refset_add(refs, msg, 'references')
         refset_add(refs, msg, 'in-reply-to')
 
         mid = msg.get('message-id')
 
-        if not refs:
+        if not refs or force_root:
             grp = {'root': msg, 'emails': [msg]}
             email_roots[mid] = grp
             email_grps[mid] = grp
@@ -309,7 +317,9 @@ def main():
             stats['skip-asel'] += 1
             continue
 
-        if not group_one_msg(msg, stats):
+        force_root = subj.startswith('Fw: [Bug')
+
+        if not group_one_msg(msg, stats, force_root=force_root):
             misses.append(msg)
 
     # Re-try misses, apparently git-send-email sends out of order

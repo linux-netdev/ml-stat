@@ -55,6 +55,12 @@ There are also auxuliary scripts which don't do true mailing list data.
     net/ drivers/net/ include/net/ | \
       awk -f $repo_path/review_count.awk
 
+TODO
+----
+
+1. Compute review coverage (% of sets which went in with no reviews
+   across all posted revisions). Vs by simply counting review tags.
+
 Ideas
 -----
 

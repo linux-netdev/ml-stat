@@ -21,6 +21,11 @@ Example use::
 
   ./ml-stat.py --db db.json --email-count 4000
 
+Use `git log` in the ml repo to find the right number of emails to look
+back at. Find the first message of interest and use::
+
+  git rev-list --count $start-hash..master
+
 Before generating the stats it's recommended to run the self checks,
 to make sure that the email mailmap and parsing are okay.
 

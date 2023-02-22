@@ -319,9 +319,10 @@ def main():
 
         i = 0
         while i < len(misses):
-            while group_one_msg(misses[i], stats):
+            if group_one_msg(misses[i], stats):
                 del misses[i]
-            i += 1
+            else:
+                i += 1
 
     stats['miss'] = len(misses)
 

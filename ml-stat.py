@@ -16,6 +16,7 @@ from email.policy import default
 
 email_roots = dict()
 email_grps = dict()
+git_repo = ""
 
 
 class EmailMsg:
@@ -139,7 +140,7 @@ def remove_bots(people_dict):
 
 def git(cmd):
     # print(' '.join(['git'] + cmd))
-    with subprocess.Popen(['/usr/bin/git'] + cmd, cwd='netdev-2.git',
+    with subprocess.Popen(['/usr/bin/git'] + cmd, cwd=git_repo,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE) as p:
         p.wait()
         # print(p.stdout.read().decode('utf-8'))
@@ -317,6 +318,7 @@ def main():
     parser.add_argument('--db', type=str, required=True)
     parser.add_argument('--email-count', type=int, required=True,
                         help="How many emails to look back into the archive")
+    parser.add_argument('--repo', dest='repo', default='netdev-2.git')
     # Development options
     parser.add_argument('--name-dump', dest='name_dump', action='store_true', default=False)
     parser.add_argument('--check', dest='check', action='store_true', default=False)
@@ -326,6 +328,9 @@ def main():
     parser.add_argument('--top-extra', type=int, required=False, default=0,
                         help="How many extra entries to add to the top n")
     args = parser.parse_args()
+
+    global git_repo
+    git_repo = args.repo
 
     with open(args.db, 'r') as f:
         db = json.load(f)
@@ -338,7 +343,7 @@ def main():
     }
     misses = []
 
-    prep_files('msg-files', 'netdev-2.git', args.email_count)
+    prep_files('msg-files', git_repo, args.email_count)
 
     dated = False
     for i in reversed(range(args.email_count)):

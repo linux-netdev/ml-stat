@@ -211,28 +211,39 @@ def prep_files(file_dir, git_dir, n):
 
 def name_selfcheck(ppl_stat):
     names = dict()
+    pre_mapped = set()
+    no_names = set()
+
     for p in ppl_stat:
         if p.find('<') > 0:
             continue
 
+        plow = p.lower()
         for p2 in ppl_stat:
-            if p in p2 and p != p2:
+            if plow in p2.lower() and p != p2:
                 idx = p2.find('<')
-                if p.find('<') < 1:
+                if idx < 2:
                     continue
 
-                name = p[:idx]
+                name = p2[:idx]
                 if name not in names:
                     names[name] = []
                 names[name].append(p)
-                print(f'Mapped {p} {p2}')
+                print(f'Mapped no-name {p} to {p2}')
+                pre_mapped.add(p)
                 break
         else:
-            print(f'No map for {p}')
+            # Print this later to keep the output in neat sections
+            no_names.add(p)
+    if len(pre_mapped) > 0:
+        print()
 
     for p in ppl_stat:
         idx = p.find('<')
         if idx == -1:
+            print("Invalid email/name:", p)
+            continue
+        if p in pre_mapped or p in no_names:
             continue
 
         name = p[:idx]
@@ -240,9 +251,20 @@ def name_selfcheck(ppl_stat):
             names[name] = []
         names[name].append(p)
 
+    for p in no_names:
+        print(f'No name for {p}')
+    if len(pre_mapped) > 0:
+        print()
+
+    header_printed = False
     for n in names:
         if len(names[n]) > 1:
-            print(f"{n}: {names[n]}")
+            if not header_printed:
+                print("Suggested mail map additions:")
+                header_printed = True
+            print(f'\t[ "{", ".join(names[n])}" ],')
+    if not header_printed:
+        print("No new mail map entries found")
 
 
 def group_one_msg(msg, stats, force_root=False):

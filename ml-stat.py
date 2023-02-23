@@ -132,6 +132,7 @@ def remove_bots(people_dict):
     for bot in ['<patchwork-bot+netdevbpf@kernel.org>',
                 'kernel test robot <lkp@intel.com>',
                 '<pr-tracker-bot@kernel.org>',
+                'syzbot <syzbot@syzkaller.appspotmail.com>',
                 '<patchwork-bot+bluetooth@kernel.org>']:
         people_dict.pop(bot, 0)
 

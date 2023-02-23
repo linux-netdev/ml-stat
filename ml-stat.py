@@ -209,7 +209,7 @@ def prep_files(file_dir, git_dir, n):
     git(['reset', '--hard', 'master'])
 
 
-def name_selfcheck(ppl_stat):
+def name_selfcheck(ppl_stat, mailmap):
     names = dict()
     pre_mapped = set()
     no_names = set()
@@ -253,17 +253,34 @@ def name_selfcheck(ppl_stat):
 
     for p in no_names:
         print(f'No name for {p}')
-    if len(pre_mapped) > 0:
+    if len(no_names) > 0:
         print()
 
-    header_printed = False
+    new_ents = []
+    mod_ents = []
+
     for n in names:
         if len(names[n]) > 1:
-            if not header_printed:
-                print("Suggested mail map additions:")
-                header_printed = True
-            print(f'\t[ "{", ".join(names[n])}" ],')
-    if not header_printed:
+            added = False
+            for m in mailmap:
+                if n in m[0] or n in m[1] or \
+                   names[n][0] in m[0] or names[n][0] in m[1] or \
+                   names[n][1] in m[0] or names[n][1] in m[1]:
+                    mod_ents.append(n)
+                    added = True
+                    break
+            if not added:
+                new_ents.append(n)
+
+    if len(new_ents):
+        print("Suggested mail map additions:")
+        for n in new_ents:
+            print('\t[ "' + '", "'.join(names[n]) + '" ],')
+    if len(mod_ents):
+        print("Suggested mail map additions (existing entries):")
+        for n in mod_ents:
+            print('\t[ "' + '", "'.join(names[n]) + '" ],')
+    elif len(new_ents) == 0:
         print("No new mail map entries found")
 
 
@@ -375,6 +392,14 @@ def main():
     mailmap = db['mailmap']
     corpmap = db['corpmap']
 
+    # Check the DBs only have two entries in the arrays
+    for e in mailmap:
+        if len(e) != 2:
+            raise Exception("Entry must have 2 values: " + repr(e))
+    for e in corpmap:
+        if len(e) != 2:
+            raise Exception("Entry must have 2 values: " + repr(e))
+
     for m in mailmap:
         for c in corpmap:
             if m[1].find(c[0]) != -1:
@@ -417,7 +442,7 @@ def main():
         for m in sorted(l):
             print(m)
     elif args.check:
-        name_selfcheck(ppl_stat)
+        name_selfcheck(ppl_stat, mailmap)
     elif args.name_dump:
         print(f'Names ({len(ppl_stat)}):')
         print('  ' + '\n  '.join(sorted(ppl_stat.keys())))

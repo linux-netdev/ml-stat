@@ -4,12 +4,14 @@
 import argparse
 import email
 import email.utils
+import fcntl
 import json
 import filecmp
 import os
 import shutil
 import subprocess
 import sys
+import termios
 
 from email.policy import default
 
@@ -17,6 +19,26 @@ from email.policy import default
 email_roots = dict()
 email_grps = dict()
 git_repo = ""
+
+
+def getch():
+    fd = sys.stdin.fileno()
+
+    old_attr = termios.tcgetattr(fd)
+    new_attr = termios.tcgetattr(fd)
+    new_attr[3] = new_attr[3] & ~termios.ICANON & ~termios.ECHO
+    termios.tcsetattr(fd, termios.TCSANOW, new_attr)
+
+    try:
+        while True:
+            try:
+                c = sys.stdin.read(1)
+                break
+            except IOError:
+                pass
+    finally:
+        termios.tcsetattr(fd, termios.TCSAFLUSH, old_attr)
+    return c
 
 
 class EmailMsg:
@@ -211,79 +233,172 @@ def prep_files(file_dir, git_dir, n):
     git(['reset', '--hard', 'master'])
 
 
+def name_check_sort(sequences, mailmap, result):
+    print("NOTE: press a - accept; r - rotate; i - ignore; s - strip names")
+    for s in sequences:
+        idents = list(s)
+        # Try to pre-sort based on mail map
+        targets = []
+        weak_targets = []
+        for ident in idents:
+            for m in mailmap:
+                if m[0] in ident:
+                    print(f"ERROR: {ident} should have already been mapped!")
+                if ident in m[0]:
+                    print(f"WARN: {ident} would have matched {m[0]}!")
+                if ident in m[1]:
+                    targets.append(ident)
+                else:
+                    idx = ident.find('<')
+                    name = ident[:idx].lower()
+                    addr = ident[idx:].lower()
+                    mt = m[1].lower()
+                    if name in mt or addr in mt:
+                        weak_targets.append(ident)
+        if len(targets) == 0:
+            targets += weak_targets
+        if len(targets) > 1:
+            print(f"ERROR: multiple map targets for {idents}!")
+        elif len(targets) == 1:
+            print(f"INFO: target identity {targets[0]} set based on existing entry!")
+            idents.remove(targets[0])
+            idents.append(targets[0])
+        # Ask user for their preference
+        done = False
+        while not done:
+            print("   ", idents)
+            k = getch()
+            if k == 'a':
+                # Produce pairs, mapping everything onto the last entry
+                for name in idents[:-1]:
+                    result.append([name, idents[-1]])
+                done = True
+            elif k == 'r':
+                if len(targets):
+                    print(f"WARN: rotating when target was pre-mapped!")
+                idents = [idents[-1]] + idents[:-1]
+            elif k == 's':
+                stripped = []
+                seen = set()
+                for name in idents[:-1]:
+                    idx = name.find('<')
+                    addr = name[idx:]
+                    if addr not in seen:
+                        stripped.append(addr)
+                        seen.add(addr)
+                stripped.append(idents[-1])
+                idents = stripped
+            elif k == 'i':
+                print("Okay, skipping")
+                done = True
+            else:
+                print("Unknown key:", k)
+                print("a - accept; r - rotate; i - ignore; s - strip names")
+
+
 def name_selfcheck(ppl_stat, mailmap):
+    ident_collisions = {'kernel test robot '}
     names = dict()
-    pre_mapped = set()
+    low_names = dict()
+    emails = dict()
     no_names = set()
 
-    for p in ppl_stat:
-        if p.find('<') > 0:
-            continue
-
-        plow = p.lower()
-        for p2 in ppl_stat:
-            if plow in p2.lower() and p != p2:
-                idx = p2.find('<')
-                if idx < 2:
-                    continue
-
-                name = p2[:idx]
-                if name not in names:
-                    names[name] = []
-                names[name].append(p)
-                print(f'Mapped no-name {p} to {p2}')
-                pre_mapped.add(p)
-                break
-        else:
-            # Print this later to keep the output in neat sections
-            no_names.add(p)
-    if len(pre_mapped) > 0:
-        print()
-
+    # Create map of email -> set(identities)
     for p in ppl_stat:
         idx = p.find('<')
         if idx == -1:
             print("Invalid email/name:", p)
             continue
-        if p in pre_mapped or p in no_names:
+
+        addr = p[idx:].lower()
+        if addr not in emails:
+            emails[addr] = set()
+        emails[addr].add(p)
+
+        if idx == 0:
+            no_names.add(addr)
+
+    # Create map of name -> list(identities)
+    for p in ppl_stat:
+        idx = p.find('<')
+        if idx == -1:
+            print("Invalid email/name:", p)
+            continue
+        if p.lower() in no_names:
             continue
 
         name = p[:idx]
+        # Some people have the same name, use the full addr for name
+        if name in ident_collisions:
+            name = p
         if name not in names:
             names[name] = []
         names[name].append(p)
 
-    for p in no_names:
-        print(f'No name for {p}')
-    if len(no_names) > 0:
-        print()
+        lname = name.lower()
+        if lname not in low_names:
+            low_names[lname] = []
+        low_names[lname].append(p)
 
-    new_ents = []
-    mod_ents = []
+    #
+    # Results, we got all the maps now
+    #
+    result = []
+    print(f"emails: {len(emails)}  no-names: {len(no_names)}  persons: {len(names)}  persons.lower(): {len(low_names)}")
+    if len(emails) != len(no_names) + len(names):
+        print("WARN: more emails than identities")
+    if len(names) != len(low_names):
+        print("WARN: unmapped identities with different case")
+    print()
 
+    # Complain about emails with multiple identities
+    bad_emails = []
+    for addr in emails:
+        if len(emails[addr]) > 1:
+            bad_emails.append(emails[addr])
+    if len(bad_emails) > 0:
+        print("Emails with multiple identities")
+        name_check_sort(bad_emails, mailmap, result)
+
+    bad_names = []
     for n in names:
         if len(names[n]) > 1:
-            added = False
-            for m in mailmap:
-                if n in m[0] or n in m[1] or \
-                   names[n][0] in m[0] or names[n][0] in m[1] or \
-                   names[n][1] in m[0] or names[n][1] in m[1]:
-                    mod_ents.append(n)
-                    added = True
-                    break
-            if not added:
-                new_ents.append(n)
+            bad_names.append(names[n])
+    if len(bad_names) > 0:
+        print("Names with multiple identities")
+        name_check_sort(bad_names, mailmap, result)
 
-    if len(new_ents):
+    bad_names = dict()
+    for n in names:
+        n_lower = n.lower()
+        if len(names[n]) != len(low_names[n_lower]):
+            if n_lower not in bad_names:
+                bad_names[n_lower] = []
+            bad_names[n_lower] += names[n]
+    if len(bad_names) > 0:
+        print("Names which differ only on case")
+        name_check_sort(bad_names.values(), mailmap, result)
+
+    print()
+    if len(result) > 0:
         print("Suggested mail map additions:")
-        for n in new_ents:
-            print('\t[ "' + '", "'.join(names[n]) + '" ],')
-    if len(mod_ents):
-        print("Suggested mail map additions (existing entries):")
-        for n in mod_ents:
-            print('\t[ "' + '", "'.join(names[n]) + '" ],')
-    elif len(new_ents) == 0:
+    else:
         print("No new mail map entries found")
+    for entry in result:
+        a = entry[0].replace('"', '\\"')
+        b = entry[1].replace('"', '\\"')
+        print(f'\t[ "{a}", "{b}" ],')
+
+    # Complain about email-only identities
+    nn_list = [x for x in no_names]
+    for p in nn_list:
+        if len(emails[p]) > 1:
+            no_names.remove(p)
+
+    if len(no_names) > 0:
+        print()
+    for p in no_names:
+        print(f'No name for {p}')
 
 
 def group_one_msg(msg, stats, force_root=False):

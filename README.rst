@@ -65,6 +65,15 @@ TODO
 
 1. Compute review coverage (% of sets which went in with no reviews
    across all posted revisions). Vs by simply counting review tags.
+   (Done based on commits for now).
+
+2. Calculate the age of contributors (time since first commit).
+
+3. Count a series as one across versions.
+   This should also let us find repost violations.
+
+4. Calculate stats for pw checks (per check and per person?)
+   Download all the data from pw and filter by delegate.
 
 Ideas
 -----
@@ -74,3 +83,6 @@ Ideas
 
 2. Compute the generality score to find out which developers are
    silo'ed into their own drivers vs work cross-tree.
+
+3. Find companies with large number of disconnected developers
+   and no in house expertise.

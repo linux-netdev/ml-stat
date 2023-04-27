@@ -16,9 +16,18 @@ import termios
 from email.policy import default
 
 
-email_roots = dict()
-email_grps = dict()
 git_repo = ""
+
+
+class ParsingState:
+    def __init__(self):
+        self.email_roots = dict()
+        self.email_grps = dict()
+        self.ppl_stat = dict()
+
+        # These will be replaced by EmailMsg() instances
+        self.first_msg = dict()
+        self.last_msg = dict()
 
 
 def getch():
@@ -401,7 +410,7 @@ def name_selfcheck(ppl_stat, mailmap):
         print(f'No name for {p}')
 
 
-def group_one_msg(msg, stats, force_root=False):
+def group_one_msg(ps, msg, stats, force_root=False):
         refs = set()
         refset_add(refs, msg, 'references')
         refset_add(refs, msg, 'in-reply-to')
@@ -410,15 +419,15 @@ def group_one_msg(msg, stats, force_root=False):
 
         if not refs or force_root:
             grp = {'root': msg, 'emails': [msg]}
-            email_roots[mid] = grp
-            email_grps[mid] = grp
+            ps.email_roots[mid] = grp
+            ps.email_grps[mid] = grp
             stats['root'] += 1
         else:
             for r in refs:
-                if r in refs and r in email_grps:
-                    grp = email_grps[r]
+                if r in refs and r in ps.email_grps:
+                    grp = ps.email_grps[r]
                     grp['emails'].append(msg)
-                    email_grps[mid] = grp
+                    ps.email_grps[mid] = grp
                     stats['match'] += 1
                     return True
             else:
@@ -426,23 +435,8 @@ def group_one_msg(msg, stats, force_root=False):
         return True
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Mailing list stats')
-    parser.add_argument('--corp', dest='corp', action='store_true', default=False,
-                        help="Print the stats by company rather than by person")
-    parser.add_argument('--db', type=str, required=True)
-    parser.add_argument('--email-count', type=int, required=True,
-                        help="How many emails to look back into the archive")
-    parser.add_argument('--repo', dest='repo', default='netdev-2.git')
-    # Development options
-    parser.add_argument('--name-dump', dest='name_dump', action='store_true', default=False)
-    parser.add_argument('--check', dest='check', action='store_true', default=False)
-    parser.add_argument('--name', nargs='+', default=[])
-    parser.add_argument('--proc', dest='proc', action='store_true', default=False)
-    parser.add_argument('--dump-miss', dest='misses', action='store_true', default=False)
-    parser.add_argument('--top-extra', type=int, required=False, default=0,
-                        help="How many extra entries to add to the top n")
-    args = parser.parse_args()
+def process(args, corp):
+    ps = ParsingState()
 
     global git_repo
     git_repo = args.repo
@@ -466,6 +460,7 @@ def main():
             msg = email.message_from_binary_file(fp, policy=default)
 
         if not dated:
+            ps.first_msg = msg
             print(msg.get('date'))
             dated = True
 
@@ -479,8 +474,10 @@ def main():
 
         force_root = subj.startswith('Fw: [Bug')
 
-        if not group_one_msg(msg, stats, force_root=force_root):
+        if not group_one_msg(ps, msg, stats, force_root=force_root):
             misses.append(msg)
+    if dated:
+        ps.last_msg = msg
 
     # Re-try misses, apparently git-send-email sends out of order
     n_misses = 0
@@ -489,7 +486,7 @@ def main():
 
         i = 0
         while i < len(misses):
-            if group_one_msg(misses[i], stats):
+            if group_one_msg(ps, misses[i], stats):
                 del misses[i]
             else:
                 i += 1
@@ -497,7 +494,7 @@ def main():
     stats['miss'] = len(misses)
 
     threads = dict()
-    for mid, grp in email_roots.items():
+    for mid, grp in ps.email_roots.items():
         threads[mid] = EmailThread(grp)
 
     print('Unknown:')
@@ -528,34 +525,35 @@ def main():
                 break
 
     use_map = [mailmap]
-    if args.corp:
+    if corp:
         use_map.append(corpmap)
 
-    ppl_stat = dict()
     for mid, thr in threads.items():
         authors = thr.authors(use_map)
         parti = thr.participants(use_map)
         for p in parti:
-            if p not in ppl_stat:
-                ppl_stat[p] = {'author': {'thr': 0, 'msg': 0},
-                               'reviewer': {'thr': 0, 'msg': 0}}
+            if p not in ps.ppl_stat:
+                ps.ppl_stat[p] = {'author': {'thr': 0, 'msg': 0},
+                                  'reviewer': {'thr': 0, 'msg': 0}}
             if p in authors:
-                ppl_stat[p]['author']['thr'] += 1
-                ppl_stat[p]['author']['msg'] += authors[p]
+                ps.ppl_stat[p]['author']['thr'] += 1
+                ps.ppl_stat[p]['author']['msg'] += authors[p]
             else:
-                ppl_stat[p]['reviewer']['thr'] += 1
-                ppl_stat[p]['reviewer']['msg'] += parti[p]
+                ps.ppl_stat[p]['reviewer']['thr'] += 1
+                ps.ppl_stat[p]['reviewer']['msg'] += parti[p]
 
-    for p in ppl_stat.keys():
-        score = 10 * ppl_stat[p]['reviewer']['thr'] + 2 * (ppl_stat[p]['reviewer']['msg'] - 1) \
-                - 3 * ppl_stat[p]['author']['thr'] - (ppl_stat[p]['author']['msg'] // 2)
-        ppl_stat[p]['score'] = {'positive': score, 'negative': -score}
+    for p in ps.ppl_stat.keys():
+        score = 10 * ps.ppl_stat[p]['reviewer']['thr'] + 2 * (ps.ppl_stat[p]['reviewer']['msg'] - 1) \
+                - 3 * ps.ppl_stat[p]['author']['thr'] - (ps.ppl_stat[p]['author']['msg'] // 2)
+        ps.ppl_stat[p]['score'] = {'positive': score, 'negative': -score}
 
     print(stats)
     print()
 
     if args.proc:
         pass
+    elif args.json_out:
+        return ps
     elif args.misses:
         l = []
         for m in misses:
@@ -563,10 +561,10 @@ def main():
         for m in sorted(l):
             print(m)
     elif args.check:
-        name_selfcheck(ppl_stat, mailmap)
+        name_selfcheck(ps.ppl_stat, mailmap)
     elif args.name_dump:
-        print(f'Names ({len(ppl_stat)}):')
-        print('  ' + '\n  '.join(sorted(ppl_stat.keys())))
+        print(f'Names ({len(ps.ppl_stat)}):')
+        print('  ' + '\n  '.join(sorted(ps.ppl_stat.keys())))
     else:
         out_keys = [
             ('reviewer', 'thr', 10),
@@ -580,10 +578,57 @@ def main():
         if args.name:
             for name in args.name:
                 for ok in out_keys:
-                    print_one(ppl_stat, ok[0], ok[1], name)
+                    print_one(ps.ppl_stat, ok[0], ok[1], name)
         else:
             for ok in out_keys:
-                print_top(ppl_stat, ok[0], ok[1], ok[2] + args.top_extra)
+                print_top(ps.ppl_stat, ok[0], ok[1], ok[2] + args.top_extra)
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Mailing list stats')
+    parser.add_argument('--no-individual', dest='individual', action='store_false', default=True,
+                        help="Do not print the stats by individual people")
+    parser.add_argument('--no-corp', dest='corp', action='store_false', default=True,
+                        help="Do not print the stats by company")
+    parser.add_argument('--db', type=str, required=True)
+    parser.add_argument('--email-count', type=int, required=True,
+                        help="How many emails to look back into the archive")
+    parser.add_argument('--repo', dest='repo', default='netdev-2.git')
+    parser.add_argument('--json-out', dest='json_out', default='',
+                        help="Instead of printing results dump them into a JSON file")
+    # Development options
+    parser.add_argument('--name-dump', dest='name_dump', action='store_true', default=False)
+    parser.add_argument('--check', dest='check', action='store_true', default=False)
+    parser.add_argument('--name', nargs='+', default=[])
+    parser.add_argument('--proc', dest='proc', action='store_true', default=False)
+    parser.add_argument('--dump-miss', dest='misses', action='store_true', default=False)
+    parser.add_argument('--top-extra', type=int, required=False, default=0,
+                        help="How many extra entries to add to the top n")
+    args = parser.parse_args()
+
+    if args.json_out and not (args.individual and args.corp):
+        parser.error("--json-out requires both crop and individual stats")
+
+    ind_out = corp_out = None
+    if args.individual:
+        ind_out = process(args, corp=False)
+    if args.corp:
+        corp_out = process(args, corp=True)
+
+    if args.json_out:
+        result = {
+            "count": args.email_count,
+
+            "first_date": ind_out.first_msg.get('date'),
+            "last_date": ind_out.last_msg.get('date'),
+            "first_msg_id": ind_out.first_msg.get('message-id'),
+            "last_msg_id": ind_out.last_msg.get('message-id'),
+
+            "individual": ind_out.ppl_stat,
+            "corporate": corp_out.ppl_stat,
+        }
+        with open(args.json_out, "w") as fp:
+            json.dump(result, fp)
 
 
 if __name__ == "__main__":

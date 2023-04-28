@@ -63,6 +63,72 @@ def print_direct(mlA, mlB, key, top_extra):
         print()
 
 
+def age_histogram(ml, role, per_dot=None):
+    print('Tenure histogram for', role)
+    histogram = {
+        'unknown': 0,
+        'no commit': 0,
+    }
+
+    ages = ml['ages']
+    # Get array of ages in months
+    now = datetime.datetime.now()
+    months = []
+    for name in ml['individual'].keys():
+        person = ml['individual'][name]
+        if role not in person or not person[role]['msg']:
+            continue
+        if name not in ages:
+            histogram['unknown'] += 1
+            continue
+        start_date = ages[name]
+        if not start_date:
+            histogram['no commit'] += 1
+            continue
+
+        start = datetime.datetime.fromisoformat(start_date)
+        age = (now - start).total_seconds() / 60 / 60 / 24 / 30
+        months.append(age)
+
+    left = months
+    i = 3
+    while len(left):
+        months = left
+        left = []
+        histogram[i] = 0
+        for m in months:
+            if m < i:
+                histogram[i] += 1
+            else:
+                left.append(m)
+        if i < 24:
+            i *= 2
+        else:
+            i += 24
+    max_cnt = max(histogram.values())
+    if per_dot is None:
+        per_dot = 50.0 / max_cnt
+    for k, v in histogram.items():
+        dot = '*'
+        if isinstance(k, str):
+            t = k
+        elif k < 12:
+            if k > 3:
+                t = f'{k // 2:2}-{k:2}mo'
+            else:
+                t = f' 0-{k:2}mo'
+        else:
+            if k > 12:
+                dot = '*' if k < 24 else '#'
+                t = f'{prev_k // 12:2}-{k // 12:2}yr'
+            else:
+                t = f'{k // 2}mo-{k // 12}yr'
+        prev_k = k
+        print(f'{t:9} | {v:3} | {dot * int(v * per_dot)}')
+    print()
+    return per_dot  # Try to keep the scale across histograms
+
+
 def role_counts(ml):
     rc = {
         'author': 0,
@@ -112,6 +178,9 @@ def main():
     print_direct(mlA, mlB, 'individual', args.top_extra)
     print()
     print_direct(mlA, mlB, 'corporate', args.top_extra)
+
+    scale = age_histogram(mlA, 'reviewer')
+    age_histogram(mlA, 'author', scale)
 
 
 if __name__ == "__main__":

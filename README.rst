@@ -94,12 +94,10 @@ TODO
    across all posted revisions). Vs by simply counting review tags.
    (Done based on commits for now).
 
-2. Calculate the age of contributors (time since first commit).
-
-3. Count a series as one across versions.
+2. Count a series as one across versions.
    This should also let us find repost violations.
 
-4. Calculate stats for pw checks (per check and per person?)
+3. Calculate stats for pw checks (per check and per person?)
    Download all the data from pw and filter by delegate.
 
 Ideas

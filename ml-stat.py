@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0
 
 import argparse
+import datetime
 import email
 import email.utils
 import fcntl
@@ -12,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import termios
+import re
 
 from email.policy import default
 
@@ -24,6 +26,8 @@ class ParsingState:
         self.email_roots = dict()
         self.email_grps = dict()
         self.ppl_stat = dict()
+
+        self.ages = dict()
 
         # These will be replaced by EmailMsg() instances
         self.first_msg = dict()
@@ -177,6 +181,58 @@ def git(cmd):
         # print(p.stdout.read().decode('utf-8'))
         # print(p.stderr.read().decode('utf-8'))
         # print(p.returncode)
+
+
+def get_author_history():
+    hist = {
+        'mail': dict(),
+        'name': dict(),
+    }
+
+    with open('dump', 'rb') as fp:
+        author_history = fp.read().decode('utf-8', errors='ignore')
+    lines = author_history.split('\n')
+    for line in lines:
+        data = line.split(";")
+        date = datetime.datetime.fromtimestamp(int(data[0]))
+        name = data[1]
+        mail = data[2]
+
+        # If it's one-sided alias try to use the old entry
+        if name in hist['name']:
+            if mail not in hist['mail']:
+                hist['mail'][mail] = hist['name'][name]
+        elif mail in hist['mail']:
+            if name not in hist['name']:
+                hist['name'][name] = hist['mail'][mail]
+        # no hits, new entry
+        else:
+            hist['name'][name] = date
+            hist['mail'][mail] = date
+
+    return hist
+
+
+def get_ages(names, author_history):
+    ages = {}
+
+    regex = re.compile(r'(.*) <(.*)>')
+    for full_name in names:
+        match = regex.match(full_name)
+        if not match:
+            continue
+
+        name = match.group(1)
+        mail = match.group(2)
+        when = None
+        if name in author_history['name']:
+            when = author_history['name'][name]
+        if mail in author_history['mail']:
+            mail_when = author_history['mail'][mail]
+            when = mail_when if when is None else min(when, mail_when)
+        ages[full_name] = when
+
+    return ages
 
 
 def refset_add(refs, msg, key):
@@ -582,6 +638,7 @@ def process(args, corp):
         else:
             for ok in out_keys:
                 print_top(ps.ppl_stat, ok[0], ok[1], ok[2] + args.top_extra)
+        return ps
 
 
 def main():
@@ -590,6 +647,8 @@ def main():
                         help="Do not print the stats by individual people")
     parser.add_argument('--no-corp', dest='corp', action='store_false', default=True,
                         help="Do not print the stats by company")
+    parser.add_argument('--no-ages', dest='ages', action='store_false', default=True,
+                        help="Do not print member tenure stats")
     parser.add_argument('--db', type=str, required=True)
     parser.add_argument('--email-count', type=int, required=True,
                         help="How many emails to look back into the archive")
@@ -612,6 +671,15 @@ def main():
     ind_out = corp_out = None
     if args.individual:
         ind_out = process(args, corp=False)
+        if args.ages:
+            author_history = get_author_history()
+            ages = get_ages(ind_out.ppl_stat.keys(), author_history)
+            ages_str = {}
+            for x, y in ages.items():
+                if y:
+                    y = y.isoformat()
+                ages_str[x] = y
+            ind_out.ages = ages_str
     if args.corp:
         corp_out = process(args, corp=True)
 
@@ -630,6 +698,7 @@ def main():
             "first_msg_id": ind_out.first_msg.get('message-id'),
             "last_msg_id": ind_out.last_msg.get('message-id'),
 
+            "ages": ind_out.ages,
             "individual": ind_out.ppl_stat,
             "corporate": corp_out.ppl_stat,
         }

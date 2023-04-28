@@ -63,8 +63,7 @@ def print_direct(mlA, mlB, key, top_extra):
         print()
 
 
-def age_histogram(ml, role, per_dot=None):
-    print('Tenure histogram for', role)
+def age_histogram(ml, role):
     histogram = {
         'unknown': 0,
         'no commit': 0,
@@ -105,28 +104,40 @@ def age_histogram(ml, role, per_dot=None):
             i *= 2
         else:
             i += 24
-    max_cnt = max(histogram.values())
-    if per_dot is None:
-        per_dot = 50.0 / max_cnt
-    for k, v in histogram.items():
-        dot = '*'
-        if isinstance(k, str):
-            t = k
-        elif k < 12:
-            if k > 3:
-                t = f'{k // 2:2}-{k:2}mo'
+    return role, histogram
+
+
+def print_histograms(hist_list):
+    max_line = 0
+    for _, histogram in hist_list:
+        total = sum(histogram.values())
+        max_val = max(histogram.values())
+        if max_val / total > max_line:
+            max_line = max_val / total
+
+    per_dot = 50.0 / max_line
+
+    for role, histogram in hist_list:
+        print("Tenure for", role)
+        total = sum(histogram.values())
+        for k, v in histogram.items():
+            dot = '*'
+            if isinstance(k, str):
+                t = k
+            elif k < 12:
+                if k > 3:
+                    t = f'{k // 2:2}-{k:2}mo'
+                else:
+                    t = f' 0-{k:2}mo'
             else:
-                t = f' 0-{k:2}mo'
-        else:
-            if k > 12:
-                dot = '*' if k < 24 else '#'
-                t = f'{prev_k // 12:2}-{k // 12:2}yr'
-            else:
-                t = f'{k // 2}mo-{k // 12}yr'
-        prev_k = k
-        print(f'{t:9} | {v:3} | {dot * int(v * per_dot)}')
-    print()
-    return per_dot  # Try to keep the scale across histograms
+                if k > 12:
+                    dot = '*' if k < 24 else '#'
+                    t = f'{prev_k // 12:2}-{k // 12:2}yr'
+                else:
+                    t = f'{k // 2}mo-{k // 12}yr'
+            prev_k = k
+            print(f'{t:9} | {v:3} | {dot * int(v / total * per_dot)}')
+        print()
 
 
 def role_counts(ml):
@@ -179,8 +190,8 @@ def main():
     print()
     print_direct(mlA, mlB, 'corporate', args.top_extra)
 
-    scale = age_histogram(mlA, 'reviewer')
-    age_histogram(mlA, 'author', scale)
+    histograms = [age_histogram(mlB, 'reviewer'), age_histogram(mlB, 'author')]
+    print_histograms(histograms)
 
 
 if __name__ == "__main__":

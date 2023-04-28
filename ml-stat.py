@@ -670,6 +670,8 @@ def main():
     if args.individual:
         ind_out = process(args, corp=False)
         if args.ages:
+            # The git author history feels like it should be in git-stat
+            # but we need their names to narrow down the list
             author_history = get_author_history()
             ages = get_ages(ind_out.ppl_stat.keys(), author_history)
             ages_str = {}

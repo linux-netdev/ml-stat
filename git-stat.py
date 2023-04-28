@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: GPL-2.0
 
 import argparse
+import datetime
 import json
 import subprocess
 import os
 import pprint
+import re
 
 
 args = None
@@ -18,7 +20,68 @@ def git(cmd):
     if p.returncode:
         print(p.stderr.decode('utf-8'))
         p.check_returncode()
-    return p.stdout.decode('utf-8')
+    return p.stdout.decode('utf-8', errors="ignore")
+
+
+def get_author_history(mailmap):
+    hist = {
+        'mail': dict(),
+        'name': dict(),
+    }
+
+    regex = re.compile(r'(.*) <(.*)>')
+
+    author_history = git('log --encoding=utf-8 --reverse --format=format:%at;%an;%ae'.split(' '))
+    lines = author_history.split('\n')
+    for line in lines:
+        data = line.split(";")
+        date = datetime.datetime.fromtimestamp(int(data[0]))
+        name = data[1]
+        mail = data[2]
+
+        for m in mailmap:
+            if m[0] in name or m[0] in mail:
+                full_name = m[1]
+                match = regex.match(full_name)
+                name = match.group(0)
+                mail = match.group(1)
+                break
+
+        # If it's one-sided alias try to use the old entry
+        if name in hist['name']:
+            if mail not in hist['mail']:
+                hist['mail'][mail] = hist['name'][name]
+        elif mail in hist['mail']:
+            if name not in hist['name']:
+                hist['name'][name] = hist['mail'][mail]
+        # no hits, new entry
+        else:
+            hist['name'][name] = date
+            hist['mail'][mail] = date
+
+    return hist
+
+
+def get_ages(names, author_history):
+    ages = {}
+
+    regex = re.compile(r'(.*) <(.*)>')
+    for full_name in names:
+        match = regex.match(full_name)
+        if not match:
+            continue
+
+        name = match.group(1)
+        mail = match.group(2)
+        when = None
+        if name in author_history['name']:
+            when = author_history['name'][name]
+        if mail in author_history['mail']:
+            mail_when = author_history['mail'][mail]
+            when = mail_when if when is None else min(when, mail_when)
+        ages[full_name] = when
+
+    return ages
 
 
 def get_commit_cnt(log):
@@ -68,6 +131,26 @@ def get_review_cnt(log, maintainers):
             'x-company': {'reviewed': x_reviewed, 'pct': round(x_reviewed * 100 / sobs, 2)}}
 
 
+def get_commit_stats(log, mailmap):
+    authors = {}
+    for line in log:
+        if not line.startswith('Author: '):
+            continue
+
+        name = line[8:]
+
+        for m in mailmap:
+            if m[0] in name:
+                name = m[1]
+                break
+
+        if name not in authors:
+            authors[name] = 1
+        else:
+            authors[name] += 1
+    return authors
+
+
 def main():
     parser = argparse.ArgumentParser(description='Stats pretty printer')
     parser.add_argument('--linux', type=str, required=True, help="Path to the Linux kernel git tree")
@@ -75,12 +158,18 @@ def main():
                         help="First commit to consider, usually the (previous) merge commit of -next into downstream")
     parser.add_argument('--end-commit', type=str, default='',
                         help="Last commit to consider, usually empty or HEAD")
+    parser.add_argument('--db', type=str, required=True)
     parser.add_argument('--maintainers', type=str, nargs='*', required=True,
                         help="Count only patches applied directly by given people")
     parser.add_argument('--json-out', dest='json_out', default='',
                         help="Instead of printing results add them into a JSON file")
+    parser.add_argument('--no-ages', dest='ages', action='store_false', default=True,
+                        help="Do not print member tenure stats")
     global args
     args = parser.parse_args()
+
+    with open(args.db, 'r') as f:
+        db = json.load(f)
 
     result = {}
 
@@ -90,8 +179,20 @@ def main():
 
     commits = git(['log', args.start_commit + '..' + args.end_commit, '--no-merges'] + \
                   ['--committer=' + x for x in args.maintainers]).split('\n')
+
     result['direct_commits'] = get_commit_cnt(commits)
     result['reviews'] = get_review_cnt(commits, args.maintainers)
+    result['commit_authors'] = get_commit_stats(commits, db['mailmap'])
+
+    ages_str = {}
+    if args.ages:
+        author_history = get_author_history(db['mailmap'])
+        ages = get_ages(result['commit_authors'], author_history)
+        ages_str = {}
+        for x, y in ages.items():
+            if y:
+                y = y.isoformat()
+            ages_str[x] = y
 
     if args.json_out:
         if os.path.exists(args.json_out):
@@ -103,6 +204,7 @@ def main():
         result["start_commit"] = args.start_commit
         result["end_commit"] = end_commit
         data["git"] = result
+        data["ages"] |= ages_str
 
         with open(args.json_out, "w") as fp:
             json.dump(data, fp)

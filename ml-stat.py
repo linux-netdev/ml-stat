@@ -27,8 +27,6 @@ class ParsingState:
         self.email_grps = dict()
         self.ppl_stat = dict()
 
-        self.ages = dict()
-
         # These will be replaced by EmailMsg() instances
         self.first_msg = dict()
         self.last_msg = dict()
@@ -183,11 +181,13 @@ def git(tree, cmd):
     return p.stdout.decode('utf-8', errors='ignore')
 
 
-def get_author_history():
+def get_author_history(mailmap):
     hist = {
         'mail': dict(),
         'name': dict(),
     }
+
+    regex = re.compile(r'(.*) <(.*)>')
 
     author_history = git(args.linux, 'log --encoding=utf-8 --reverse --format=format:%at;%an;%ae'.split(' '))
     lines = author_history.split('\n')
@@ -196,6 +196,14 @@ def get_author_history():
         date = datetime.datetime.fromtimestamp(int(data[0]))
         name = data[1]
         mail = data[2]
+
+        for m in mailmap:
+            if m[0] in name or m[0] in mail:
+                full_name = m[1]
+                match = regex.match(full_name)
+                name = match.group(0)
+                mail = match.group(1)
+                break
 
         # If it's one-sided alias try to use the old entry
         if name in hist['name']:
@@ -466,35 +474,32 @@ def name_selfcheck(ppl_stat, mailmap):
 
 
 def group_one_msg(ps, msg, stats, force_root=False):
-        refs = set()
-        refset_add(refs, msg, 'references')
-        refset_add(refs, msg, 'in-reply-to')
+    refs = set()
+    refset_add(refs, msg, 'references')
+    refset_add(refs, msg, 'in-reply-to')
 
-        mid = msg.get('message-id')
+    mid = msg.get('message-id')
 
-        if not refs or force_root:
-            grp = {'root': msg, 'emails': [msg]}
-            ps.email_roots[mid] = grp
-            ps.email_grps[mid] = grp
-            stats['root'] += 1
+    if not refs or force_root:
+        grp = {'root': msg, 'emails': [msg]}
+        ps.email_roots[mid] = grp
+        ps.email_grps[mid] = grp
+        stats['root'] += 1
+    else:
+        for r in refs:
+            if r in refs and r in ps.email_grps:
+                grp = ps.email_grps[r]
+                grp['emails'].append(msg)
+                ps.email_grps[mid] = grp
+                stats['match'] += 1
+                return True
         else:
-            for r in refs:
-                if r in refs and r in ps.email_grps:
-                    grp = ps.email_grps[r]
-                    grp['emails'].append(msg)
-                    ps.email_grps[mid] = grp
-                    stats['match'] += 1
-                    return True
-            else:
-                return False
-        return True
+            return False
+    return True
 
 
-def process(args, corp):
+def process(args, db, corp):
     ps = ParsingState()
-
-    with open(args.db, 'r') as f:
-        db = json.load(f)
 
     stats = {
         'root': 0,
@@ -663,25 +668,25 @@ def main():
     global args
     args = parser.parse_args()
 
-    if args.json_out and not (args.individual and args.corp):
+    if args.json_out and not (args.individual and args.corp and args.ages):
         parser.error("--json-out requires both crop and individual stats")
 
-    ind_out = corp_out = None
+    with open(args.db, 'r') as f:
+        db = json.load(f)
+
+    ages_str = ind_out = corp_out = None
     if args.individual:
-        ind_out = process(args, corp=False)
-        if args.ages:
-            # The git author history feels like it should be in git-stat
-            # but we need their names to narrow down the list
-            author_history = get_author_history()
-            ages = get_ages(ind_out.ppl_stat.keys(), author_history)
-            ages_str = {}
-            for x, y in ages.items():
-                if y:
-                    y = y.isoformat()
-                ages_str[x] = y
-            ind_out.ages = ages_str
+        ind_out = process(args, db, corp=False)
+    if args.ages:
+        author_history = get_author_history(db['mailmap'])
+        ages = get_ages(ind_out.ppl_stat.keys(), author_history)
+        ages_str = {}
+        for x, y in ages.items():
+            if y:
+                y = y.isoformat()
+            ages_str[x] = y
     if args.corp:
-        corp_out = process(args, corp=True)
+        corp_out = process(args, db, corp=True)
 
     if args.json_out:
         if os.path.exists(args.json_out):
@@ -698,7 +703,7 @@ def main():
             "first_msg_id": ind_out.first_msg.get('message-id'),
             "last_msg_id": ind_out.last_msg.get('message-id'),
 
-            "ages": ind_out.ages,
+            "ages": ages_str,
             "individual": ind_out.ppl_stat,
             "corporate": corp_out.ppl_stat,
         }

@@ -100,6 +100,8 @@ TODO
 3. Calculate stats for pw checks (per check and per person?)
    Download all the data from pw and filter by delegate.
 
+4. How many authors have not appeared on the list.
+
 Ideas
 -----
 

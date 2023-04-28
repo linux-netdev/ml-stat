@@ -63,7 +63,7 @@ def print_direct(mlA, mlB, key, top_extra):
         print()
 
 
-def age_histogram(ml, role):
+def age_histogram(ml, names, filter_fn):
     histogram = {
         'unknown': 0,
         'no commit': 0,
@@ -73,11 +73,11 @@ def age_histogram(ml, role):
     # Get array of ages in months
     now = datetime.datetime.now()
     months = []
-    for name in ml['individual'].keys():
-        person = ml['individual'][name]
-        if role not in person or not person[role]['msg']:
+    for name in names:
+        if not filter_fn(name):
             continue
         if name not in ages:
+            print('Histogram: no commit or message from', name)
             histogram['unknown'] += 1
             continue
         start_date = ages[name]
@@ -104,7 +104,18 @@ def age_histogram(ml, role):
             i *= 2
         else:
             i += 24
-    return role, histogram
+    return histogram
+
+
+def age_histogram_ml(ml, role):
+    def is_active(name):
+        person = ml['individual'][name]
+        return role in person and person[role]['msg']
+    return role, age_histogram(ml, ml['individual'].keys(), is_active)
+
+
+def age_histogram_commits(ml):
+    return "commits", age_histogram(ml, ml['git']['commit_authors'].keys(), lambda x: True)
 
 
 def print_histograms(hist_list):
@@ -190,7 +201,8 @@ def main():
     print()
     print_direct(mlA, mlB, 'corporate', args.top_extra)
 
-    histograms = [age_histogram(mlB, 'reviewer'), age_histogram(mlB, 'author')]
+    histograms = [age_histogram_ml(mlB, 'reviewer'), age_histogram_ml(mlB, 'author'),
+                  age_histogram_commits(mlB)]
     print_histograms(histograms)
 
 

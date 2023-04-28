@@ -84,6 +84,10 @@ def main():
 
     result = {}
 
+    end_commit = args.end_commit
+    if not end_commit:
+        end_commit = git(['rev-parse', 'HEAD'])
+
     commits = git(['log', args.start_commit + '..' + args.end_commit, '--no-merges'] + \
                   ['--committer=' + x for x in args.maintainers]).split('\n')
     result['direct_commits'] = get_commit_cnt(commits)
@@ -96,6 +100,8 @@ def main():
         else:
             data = {}
 
+        result["start_commit"] = args.start_commit
+        result["end_commit"] = end_commit
         data["git"] = result
 
         with open(args.json_out, "w") as fp:

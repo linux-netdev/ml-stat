@@ -276,7 +276,7 @@ def prep_files(file_dir, n):
         os.mkdir(file_dir)
 
     # Start with the oldest dir that exists
-    git_dir = git_dir_idx = 0
+    git_dir = git_dir_idx = -1
     for i in reversed(range(9)):
         name = f'{args.repo}-{i}.git'
         if os.path.isdir(name):
@@ -284,7 +284,7 @@ def prep_files(file_dir, n):
             git_dir = name
             print('Using', name, 'as the main repo')
             break
-    if git_dir_idx == 0:
+    if git_dir_idx == -1:
         print(f'git dir not found: {args.repo}-$i.git')
         sys.exit(1)
 

@@ -29,6 +29,14 @@ back at. Find the first message of interest and use::
 Before generating the stats it's recommended to run the self checks,
 to make sure that the email mailmap and parsing are okay.
 
+Release to release comparisons and printing
+-------------------------------------------
+
+``ml-stat.py`` can generate a full dump of all statistics.
+A separate script - ``stat-print.py`` can ingest two such
+files and pretty print the statistics of the second file
+with annotations about how positions have changed.
+
 Mail map db
 -----------
 

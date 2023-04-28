@@ -63,6 +63,18 @@ def print_direct(mlA, mlB, key, top_extra):
         print()
 
 
+def print_general(ml, key):
+    print(f'{key}: start: {ml["first_date"]}\n\tend: {ml["last_date"]}')
+    days = ml_stat_days(ml)
+    print(f'{key}: messages: {ml["count"]} days: {days} ({round(ml["count"] / days)} msg/day)')
+    commits = ml["git"]["direct_commits"]
+    print(f'{key}: direct commits: {commits} ({round(commits / days)} commits/day)')
+    print(f'{key}: people/aliases: {len(ml["individual"])}')
+    reviews = ml["git"]["reviews"]
+    print(f'{key}: review pct: {reviews["any"]["pct"]}%  x-corp pct: {reviews["x-company"]["pct"]}%')
+    print()
+
+
 def main():
     parser = argparse.ArgumentParser(description='Stats pretty printer')
     parser.add_argument('--ml-stats', type=str, nargs=2, required=True)
@@ -75,16 +87,9 @@ def main():
     with open(args.ml_stats[0]) as fp:
         mlB = json.load(fp)
 
-    print(f'Prev: start: {mlA["first_date"]}\n\tend: {mlA["last_date"]}')
-    days = ml_stat_days(mlA)
-    print(f'Prev: messages: {mlA["count"]} days: {days} ({round(mlA["count"] / days)} msg/day)')
-    print(f'Prev: people/aliases: {len(mlA["individual"])}')
-    print()
-    print(f'Curr: start: {mlB["first_date"]}\n\tend: {mlB["last_date"]}')
-    days = ml_stat_days(mlB)
-    print(f'Curr: messages: {mlA["count"]} days: {days}  ({round(mlA["count"] / days)} msg/day)')
-    print(f'Curr: people/aliases: {len(mlB["individual"])}')
-    print()
+    print_general(mlA, 'Prev')
+    print_general(mlB, 'Curr')
+
     print_direct(mlA, mlB, 'individual', args.top_extra)
     print()
     print_direct(mlA, mlB, 'corporate', args.top_extra)

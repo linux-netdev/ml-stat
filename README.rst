@@ -29,12 +29,30 @@ back at. Find the first message of interest and use::
 Before generating the stats it's recommended to run the self checks,
 to make sure that the email mailmap and parsing are okay.
 
+git stats
+---------
+
+Some statistics are much quicker to get from git. They may go away
+over time but for now ``git-stat.py`` loads them.
+
+Example use::
+
+    ./git-stat.py --linux ../linux/ \
+        --start-commit 7e68dd7d07a --end-commit 5b7c4cabbb6 \
+	--maintainers davem@davemloft.net \
+	              edumazet@google.com \
+		      kuba@kernel.org \
+		      pabeni@redhat.com
+
 Release to release comparisons and printing
 -------------------------------------------
 
-``ml-stat.py`` can generate a full dump of all statistics.
+``ml-stat.py`` and ``git-stat.py`` can generate a full dump of
+all statistics. The scripts update the JSON file if one already
+exists (adding under their own keys, the outputs should not clash).
+
 A separate script - ``stat-print.py`` can ingest two such
-files and pretty print the statistics of the second file
+JSON files and pretty print the statistics of the second file
 with annotations about how positions have changed.
 
 Mail map db
@@ -59,6 +77,7 @@ Other scripts
 -------------
 
 There are also auxuliary scripts which don't do true mailing list data.
+They are all deprecated now by ``git-stat.py``.
 
 ::
 

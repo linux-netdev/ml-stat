@@ -616,7 +616,13 @@ def main():
         corp_out = process(args, corp=True)
 
     if args.json_out:
-        result = {
+        if os.path.exists(args.json_out):
+            with open(args.json_out, "r") as fp:
+                data = json.load(fp)
+        else:
+            data = {}
+
+        data |= {
             "count": args.email_count,
 
             "first_date": ind_out.first_msg.get('date'),
@@ -627,8 +633,9 @@ def main():
             "individual": ind_out.ppl_stat,
             "corporate": corp_out.ppl_stat,
         }
+
         with open(args.json_out, "w") as fp:
-            json.dump(result, fp)
+            json.dump(data, fp)
 
 
 if __name__ == "__main__":

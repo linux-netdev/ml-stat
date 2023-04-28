@@ -23,32 +23,36 @@ def ml_stat_weeks(ml):
 
 
 def get_top(prev_stat, ppl_stat, key, subkey, n, div):
-    lines = [f'Top {n} {key}s ({subkey}):']
+    lines = [f'Top {key}s ({subkey}):']
     ppl_prev = sorted(prev_stat.keys(), key=lambda x: prev_stat[x][key][subkey])
     ppl = sorted(ppl_stat.keys(), key=lambda x: ppl_stat[x][key][subkey])
     width = 0
     for i in range(1, n + 1):
         p = ppl[-i]
         if p not in ppl_prev:
-            move = '**'
+            move = '***'
         else:
             prev_pos = len(ppl_prev) - ppl_prev.index(p)
             if prev_pos == i:
-                move = '=='
+                move = '   '
             else:
-                move = f'{prev_pos - i:+d}'
+                if prev_pos - i <= n * 2:
+                    move = f'{prev_pos - i:+d}'
+                else:
+                    # Treat people below 2 * n as if they weren't there
+                    move = '***'
         name = p.split(' <')[0]
         score = round(ppl_stat[p][key][subkey] / div)
         width = max(width, int(math.log10(score)) + 1)
-        lines.append(f"  {i:2} ({move}) [{score:{width}}] {name}")
+        lines.append(f"  {i:2} ({move:>3}) [{score:{width}}] {name}")
     return lines
 
 
 def print_direct(mlA, mlB, key, top_extra):
     out_keys = [
-        ('reviewer', 'thr', 'msg', 15),
-        ('author', 'thr', 'msg', 15),
-        ('score', 'positive', 'negative', 15)
+        ('reviewer', 'thr', 'msg', 25),
+        ('author', 'thr', 'msg', 25),
+        ('score', 'positive', 'negative', 25)
     ]
     grpA = mlA[key]
     grpB = mlB[key]
@@ -82,6 +86,7 @@ def age_histogram(ml, names, filter_fn):
             continue
         start_date = ages[name]
         if not start_date:
+            print('Histogram: no commit (but msg) from ', name)
             histogram['no commit'] += 1
             continue
 
@@ -142,7 +147,7 @@ def print_histograms(hist_list):
                     t = f' 0-{k:2}mo'
             else:
                 if k > 12:
-                    dot = '*' if k < 24 else '#'
+                    dot = '*' if k <= 24 else '#'
                     t = f'{prev_k // 12:2}-{k // 12:2}yr'
                 else:
                     t = f'{k // 2}mo-{k // 12}yr'
@@ -182,6 +187,27 @@ def print_general(ml, key):
     print()
 
 
+def print_diff(mlA, mlB):
+    a = mlA["count"] / ml_stat_days(mlA)
+    b = mlB["count"] / ml_stat_days(mlB)
+    print(f'Diff: {round((b/a - 1) * 100, 3):+.1f}% msg/day')
+
+    a = mlA["git"]["direct_commits"] / ml_stat_days(mlA)
+    b = mlB["git"]["direct_commits"] / ml_stat_days(mlB)
+    print(f'Diff: {round((b/a - 1) * 100, 3):+.1f}% commits/day')
+
+    a = len(mlA["individual"]) / ml_stat_days(mlA)
+    b = len(mlB["individual"]) / ml_stat_days(mlB)
+    print(f'Diff: {round((b/a - 1) * 100, 3):+.1f}% people/day')
+
+    reviewsA = mlA["git"]["reviews"]
+    reviewsB = mlB["git"]["reviews"]
+    print(f'Diff: review pct: {round(reviewsB["any"]["pct"] - reviewsA["any"]["pct"], 3):+.1f}%')
+    print(f'      x-corp pct: {round(reviewsB["x-company"]["pct"] - reviewsA["x-company"]["pct"], 3):+.1f}%')
+
+    print()
+
+
 def main():
     parser = argparse.ArgumentParser(description='Stats pretty printer')
     parser.add_argument('--ml-stats', type=str, nargs=2, required=True)
@@ -191,11 +217,12 @@ def main():
 
     with open(args.ml_stats[0]) as fp:
         mlA = json.load(fp)
-    with open(args.ml_stats[0]) as fp:
+    with open(args.ml_stats[1]) as fp:
         mlB = json.load(fp)
 
     print_general(mlA, 'Prev')
     print_general(mlB, 'Curr')
+    print_diff(mlA, mlB)
 
     print_direct(mlA, mlB, 'individual', args.top_extra)
     print()

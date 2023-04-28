@@ -268,12 +268,25 @@ def print_one(ppl_stat, key, subkey, p):
     print(f"  #{i:2}. [{ppl_stat[p][key][subkey]:3}] {p}")
 
 
-def prep_files(file_dir, git_dir, n):
+def prep_files(file_dir, n):
     # os.listdir
     # os.path import isfile, join
 
     if not os.path.isdir(file_dir):
         os.mkdir(file_dir)
+
+    # Start with the oldest dir that exists
+    git_dir = git_dir_idx = 0
+    for i in reversed(range(9)):
+        name = f'{args.repo}-{i}.git'
+        if os.path.isdir(name):
+            git_dir_idx = i
+            git_dir = name
+            print('Using', name, 'as the main repo')
+            break
+    if git_dir_idx == 0:
+        print(f'git dir not found: {args.repo}-$i.git')
+        sys.exit(1)
 
     files = set()
     for f in os.listdir(file_dir):
@@ -286,23 +299,24 @@ def prep_files(file_dir, git_dir, n):
     # Sanity check
     if len(files):
         id_to_check = min(files)
-        git(args.repo, ['checkout', f'master~{id_to_check}'])
+        git(git_dir, ['checkout', f'master~{id_to_check}'])
         ret = filecmp.cmp(os.path.join(file_dir, str(id_to_check)), os.path.join(git_dir, 'm'))
         if not ret:
             print(f'Files look stale id: {id_to_check}: {ret}')
             sys.exit(1)
 
+    # TODO: go to the previous repo is we run out of messages
     for i in range(n):
         if i in files:
             continue
 
-        git(args.repo, ['checkout', f'master~{i}'])
+        git(git_dir, ['checkout', f'master~{i}'])
         shutil.copy2(os.path.join(git_dir, 'm'), os.path.join(file_dir, str(i)))
 
         if (i % 100) == 0:
             print(f"Checking out {i}/{n}", end='\r')
 
-    git(args.repo, ['reset', '--hard', 'master'])
+    git(git_dir, ['reset', '--hard', 'master'])
 
 
 def name_check_sort(sequences, mailmap, result):
@@ -509,7 +523,7 @@ def process(args, db, corp):
     }
     misses = []
 
-    prep_files('msg-files', args.repo, args.email_count)
+    prep_files('msg-files', args.email_count)
 
     dated = False
     for i in reversed(range(args.email_count)):
@@ -654,7 +668,8 @@ def main():
     parser.add_argument('--db', type=str, required=True)
     parser.add_argument('--email-count', type=int, required=True,
                         help="How many emails to look back into the archive")
-    parser.add_argument('--repo', dest='repo', default='netdev-2.git')
+    parser.add_argument('--repo', dest='repo', default='netdev',
+                        help="Name of the lore archive (without the number and .git suffix)")
     parser.add_argument('--json-out', dest='json_out', default='',
                         help="Instead of printing results dump them into a JSON file")
     # Development options
@@ -677,7 +692,7 @@ def main():
     ages_str = ind_out = corp_out = None
     if args.individual:
         ind_out = process(args, db, corp=False)
-    if args.ages:
+    if args.individual and args.ages and not args.check:
         author_history = get_author_history(db['mailmap'])
         ages = get_ages(ind_out.ppl_stat.keys(), author_history)
         ages_str = {}
@@ -685,7 +700,7 @@ def main():
             if y:
                 y = y.isoformat()
             ages_str[x] = y
-    if args.corp:
+    if args.corp and not args.check:
         corp_out = process(args, db, corp=True)
 
     if args.json_out:

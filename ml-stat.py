@@ -18,7 +18,7 @@ import re
 from email.policy import default
 
 
-git_repo = ""
+args = None
 
 
 class ParsingState:
@@ -173,14 +173,14 @@ def remove_bots(people_dict):
         people_dict.pop(bot, 0)
 
 
-def git(cmd):
-    # print(' '.join(['git'] + cmd))
-    with subprocess.Popen(['/usr/bin/git'] + cmd, cwd=git_repo,
-                          stdout=subprocess.PIPE, stderr=subprocess.PIPE) as p:
-        p.wait()
-        # print(p.stdout.read().decode('utf-8'))
-        # print(p.stderr.read().decode('utf-8'))
-        # print(p.returncode)
+def git(tree, cmd):
+    if isinstance(cmd, str):
+        cmd = [cmd]
+    p = subprocess.run(['/usr/bin/git'] + cmd, cwd=tree, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if p.returncode:
+        print(p.stderr.decode('utf-8'))
+        p.check_returncode()
+    return p.stdout.decode('utf-8', errors='ignore')
 
 
 def get_author_history():
@@ -189,8 +189,7 @@ def get_author_history():
         'name': dict(),
     }
 
-    with open('dump', 'rb') as fp:
-        author_history = fp.read().decode('utf-8', errors='ignore')
+    author_history = git(args.linux, 'log --encoding=utf-8 --reverse --format=format:%at;%an;%ae'.split(' '))
     lines = author_history.split('\n')
     for line in lines:
         data = line.split(";")
@@ -279,7 +278,7 @@ def prep_files(file_dir, git_dir, n):
     # Sanity check
     if len(files):
         id_to_check = min(files)
-        git(['checkout', f'master~{id_to_check}'])
+        git(args.repo, ['checkout', f'master~{id_to_check}'])
         ret = filecmp.cmp(os.path.join(file_dir, str(id_to_check)), os.path.join(git_dir, 'm'))
         if not ret:
             print(f'Files look stale id: {id_to_check}: {ret}')
@@ -289,13 +288,13 @@ def prep_files(file_dir, git_dir, n):
         if i in files:
             continue
 
-        git(['checkout', f'master~{i}'])
+        git(args.repo, ['checkout', f'master~{i}'])
         shutil.copy2(os.path.join(git_dir, 'm'), os.path.join(file_dir, str(i)))
 
         if (i % 100) == 0:
             print(f"Checking out {i}/{n}", end='\r')
 
-    git(['reset', '--hard', 'master'])
+    git(args.repo, ['reset', '--hard', 'master'])
 
 
 def name_check_sort(sequences, mailmap, result):
@@ -494,9 +493,6 @@ def group_one_msg(ps, msg, stats, force_root=False):
 def process(args, corp):
     ps = ParsingState()
 
-    global git_repo
-    git_repo = args.repo
-
     with open(args.db, 'r') as f:
         db = json.load(f)
 
@@ -508,7 +504,7 @@ def process(args, corp):
     }
     misses = []
 
-    prep_files('msg-files', git_repo, args.email_count)
+    prep_files('msg-files', args.repo, args.email_count)
 
     dated = False
     for i in reversed(range(args.email_count)):
@@ -643,6 +639,7 @@ def process(args, corp):
 
 def main():
     parser = argparse.ArgumentParser(description='Mailing list stats')
+    parser.add_argument('--linux', type=str, required=True, help="Path to the Linux kernel git tree")
     parser.add_argument('--no-individual', dest='individual', action='store_false', default=True,
                         help="Do not print the stats by individual people")
     parser.add_argument('--no-corp', dest='corp', action='store_false', default=True,
@@ -663,6 +660,7 @@ def main():
     parser.add_argument('--dump-miss', dest='misses', action='store_true', default=False)
     parser.add_argument('--top-extra', type=int, required=False, default=0,
                         help="How many extra entries to add to the top n")
+    global args
     args = parser.parse_args()
 
     if args.json_out and not (args.individual and args.corp):

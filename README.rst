@@ -19,7 +19,7 @@ under the `msg-files` directory.
 
 Example use::
 
-  ./ml-stat.py --db db.json --email-count 4000
+  ./ml-stat.py --linux ../linux/ --db db.json --email-count 4000
 
 Use `git log` in the ml repo to find the right number of emails to look
 back at. Find the first message of interest and use::

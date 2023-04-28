@@ -63,13 +63,32 @@ def print_direct(mlA, mlB, key, top_extra):
         print()
 
 
+def role_counts(ml):
+    rc = {
+        'author': 0,
+        'commenter': 0,
+        'both': 0,
+    }
+    for name in ml['individual'].keys():
+        person = ml['individual'][name]
+        if person['reviewer']['msg'] and person['author']['msg']:
+            rc['both'] += 1
+        elif person['reviewer']['msg']:
+            rc['commenter'] += 1
+        elif person['author']['msg']:
+            rc['author'] += 1
+
+    return rc
+
+
 def print_general(ml, key):
     print(f'{key}: start: {ml["first_date"]}\n\tend: {ml["last_date"]}')
     days = ml_stat_days(ml)
     print(f'{key}: messages: {ml["count"]} days: {days} ({round(ml["count"] / days)} msg/day)')
     commits = ml["git"]["direct_commits"]
     print(f'{key}: direct commits: {commits} ({round(commits / days)} commits/day)')
-    print(f'{key}: people/aliases: {len(ml["individual"])}')
+    rcnt = role_counts(ml)
+    print(f'{key}: people/aliases: {len(ml["individual"])}  {rcnt}')
     reviews = ml["git"]["reviews"]
     print(f'{key}: review pct: {reviews["any"]["pct"]}%  x-corp pct: {reviews["x-company"]["pct"]}%')
     print()

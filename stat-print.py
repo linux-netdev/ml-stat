@@ -43,7 +43,10 @@ def get_top(prev_stat, ppl_stat, key, subkey, n, div):
                     move = '***'
         name = p.split(' <')[0]
         score = round(ppl_stat[p][key][subkey] / div)
-        width = max(width, int(math.log10(score)) + 1)
+        if score > 0:
+            width = max(width, int(math.log10(score)) + 1)
+        else:
+            width = 1
         lines.append(f"  {i:2} ({move:>3}) [{score:{width}}] {name}")
     return lines
 

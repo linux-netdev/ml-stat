@@ -19,8 +19,8 @@ under the `msg-files` directory.
 
 Example use::
 
-  ./ml-stat.py --db ./db.json --email-count 5362 --repo bpf \
-                --linux ../linux --json-out bpf-6.4.json
+  ./ml-stat.py --db ./db.json --email-count 5362 --repo netdev \
+                --linux ../linux --json-out netdev-6.4.json
 
 Use `git log` in the ml repo to find the right number of emails to look
 back at. Find the first message of interest and use::

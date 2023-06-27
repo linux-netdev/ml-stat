@@ -70,6 +70,24 @@ def print_direct(mlA, mlB, key, top_extra):
         print()
 
 
+def print_author_balance(mlB, key, top_extra):
+    ppl_stat = mlB[key]
+    div = ml_stat_weeks(mlB)
+
+    ppl = sorted(ppl_stat.keys(), key=lambda x: ppl_stat[x]['author']['msg'])
+    score_rank = sorted(ppl_stat.keys(), key=lambda x: -ppl_stat[x]['score']['positive'])
+    ppl = list(reversed(ppl[-(15 + top_extra):]))
+
+    print("How top authors rank in scores:")
+    for i in range(len(ppl)):
+        who = ppl[i]
+        score = ppl_stat[who]["score"]["positive"] // div
+        srank = score_rank.index(who)
+        spct = srank * 100 // len(ppl_stat)
+        print(f' {i+1:2}  {"p" + str(spct):>3} [{score:3}]  {who}')
+    print()
+
+
 def age_histogram(ml, names, filter_fn):
     histogram = {
         'unknown': 0,
@@ -230,6 +248,8 @@ def main():
     print_direct(mlA, mlB, 'individual', args.top_extra)
     print()
     print_direct(mlA, mlB, 'corporate', args.top_extra)
+
+    print_author_balance(mlB, 'corporate', args.top_extra)
 
     histograms = [age_histogram_ml(mlB, 'reviewer'), age_histogram_ml(mlB, 'author'),
                   age_histogram_commits(mlB)]

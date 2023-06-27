@@ -615,7 +615,7 @@ def process(args, db, corp):
 
     for p in ps.ppl_stat.keys():
         score = 10 * ps.ppl_stat[p]['reviewer']['thr'] + 2 * (ps.ppl_stat[p]['reviewer']['msg'] - 1) \
-                - 3 * ps.ppl_stat[p]['author']['thr'] - (ps.ppl_stat[p]['author']['msg'] // 2)
+                - 4 * ps.ppl_stat[p]['author']['msg']
         ps.ppl_stat[p]['score'] = {'positive': score, 'negative': -score}
 
     print(stats)

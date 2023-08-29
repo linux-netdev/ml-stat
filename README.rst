@@ -74,6 +74,39 @@ address, second value is the target with a full name.
 
 Sample email map is provided as `db.json.sample`.
 
+Checks
+------
+
+Basic self-check::
+
+  ./ml-stat.py --db db.json --email-count 16712 \
+               --repo netdev --linux ../linux --check
+
+Use gitdm DB to map people to corp::
+
+  ./corp-gitdm-resolve.py --results netdev-6.6.json \
+                          --gitdm ../../gitdm-cncf/src/alldevs.txt
+
+See domains with more than one addr which are not mapped to corpo::
+
+   cat netdev-6.6.json | \
+     jq -r '.corporate | with_entries(.value = .value.score.positive)' | \
+     sed -n 's/.*@\(.*\)>": -*\(.*\),/\1 \2/p' | \
+     sort | \
+     datamash -t ' ' groupby 1 sum 2 count 2 | \
+     awk '{if ($3 > 1) {print $2,$3,$1;}}' | \
+     sort -n
+
+See domains with a single addr which are not mapped to corpo::
+
+   cat netdev-6.6.json | \
+     jq -r '.corporate | with_entries(.value = .value.score.positive)' | \
+     sed -n 's/.*@\(.*\)>": -*\(.*\),/\1 \2/p' | \
+     sort | \
+     datamash -t ' ' groupby 1 sum 2 count 2 | \
+     awk '{if ($3 == 1) {print $2,$3,$1;}}' | \
+     sort -n
+
 Other scripts
 -------------
 

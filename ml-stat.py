@@ -343,9 +343,10 @@ def name_check_sort(sequences, mailmap, result):
                         weak_targets.append(ident)
         if len(targets) == 0:
             targets += weak_targets
-        if len(targets) > 1:
+        uniq_targets = set(targets)
+        if len(uniq_targets) > 1:
             print(f"ERROR: multiple map targets for {idents}!")
-        elif len(targets) == 1:
+        elif len(uniq_targets) == 1:
             print(f"INFO: target identity {targets[0]} set based on existing entry!")
             idents.remove(targets[0])
             idents.append(targets[0])

@@ -107,6 +107,11 @@ See domains with a single addr which are not mapped to corpo::
      awk '{if ($3 == 1) {print $2,$3,$1;}}' | \
      sort -n
 
+Spot-check the grouping and parsing::
+
+    ./ml-stat.py --db db.json --email-count 16712 \
+               --repo netdev --linux ../linux --interact
+
 Other scripts
 -------------
 

@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import termios
+import random
 import re
 
 from email.policy import default
@@ -488,6 +489,58 @@ def name_selfcheck(ppl_stat, mailmap):
         print(f'No name for {p}')
 
 
+def get_mail_map(db, corp):
+    mailmap = db['mailmap']
+    corpmap = db['corpmap']
+
+    # Check the DBs only have two entries in the arrays
+    for e in mailmap:
+        if len(e) != 2:
+            raise Exception("Entry must have 2 values: " + repr(e))
+    for e in corpmap:
+        if len(e) != 2:
+            raise Exception("Entry must have 2 values: " + repr(e))
+
+    for m in mailmap:
+        for c in corpmap:
+            if m[1].find(c[0]) != -1:
+                corpmap.append((m[0], c[1],))
+                break
+
+    use_map = [mailmap]
+    if corp:
+        use_map.append(corpmap)
+    return use_map
+
+
+def parsed_interact(threads, db):
+    indmap = get_mail_map(db, False)
+    corpmap = get_mail_map(db, True)
+
+    while True:
+        mid = input("msgid (or quit, random): ")
+        if mid == 'quit' or mid == 'q':
+            return
+        if mid == 'random' or mid == 'r':
+            mid = random.choice(list(threads.keys()))
+        if mid[0] != '<':
+            mid = '<' + mid + '>'
+        print("mid:", mid, "found:", mid in threads)
+        if mid not in threads:
+            continue
+
+        thr = threads[mid]
+        print(f"Link: https://lore.kernel.org/all/{mid[1:-1]}/#r")
+        print(f"Subject: {thr.root_subj():.70}")
+        for msg in thr.msgs:
+            print(f'    {msg.get("From"):.30}  {msg.subject():.40}')
+        print("Authors:", thr.authors(indmap))
+        print("Participants:", thr.participants(indmap))
+        print("C Authors:", thr.authors(corpmap))
+        print("C Participants:", thr.participants(corpmap))
+        print()
+
+
 def group_one_msg(ps, msg, stats, force_root=False):
     refs = set()
     refset_add(refs, msg, 'references')
@@ -579,26 +632,7 @@ def process(args, db, corp):
         if thr.is_bad():
             print('  ' + thr.root_subj())
 
-    mailmap = db['mailmap']
-    corpmap = db['corpmap']
-
-    # Check the DBs only have two entries in the arrays
-    for e in mailmap:
-        if len(e) != 2:
-            raise Exception("Entry must have 2 values: " + repr(e))
-    for e in corpmap:
-        if len(e) != 2:
-            raise Exception("Entry must have 2 values: " + repr(e))
-
-    for m in mailmap:
-        for c in corpmap:
-            if m[1].find(c[0]) != -1:
-                corpmap.append((m[0], c[1],))
-                break
-
-    use_map = [mailmap]
-    if corp:
-        use_map.append(corpmap)
+    use_map = get_mail_map(db, corp)
 
     for mid, thr in threads.items():
         authors = thr.authors(use_map)
@@ -624,6 +658,8 @@ def process(args, db, corp):
 
     if args.proc:
         pass
+    elif args.interact:
+        return parsed_interact(threads, db)
     elif args.json_out:
         return ps
     elif args.misses:
@@ -678,6 +714,7 @@ def main():
     parser.add_argument('--check', dest='check', action='store_true', default=False)
     parser.add_argument('--name', nargs='+', default=[])
     parser.add_argument('--proc', dest='proc', action='store_true', default=False)
+    parser.add_argument('--interact', dest='interact', action='store_true', default=False)
     parser.add_argument('--dump-miss', dest='misses', action='store_true', default=False)
     parser.add_argument('--top-extra', type=int, required=False, default=0,
                         help="How many extra entries to add to the top n")

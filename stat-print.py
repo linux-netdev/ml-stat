@@ -22,13 +22,19 @@ def ml_stat_weeks(ml):
     return round((end - start).total_seconds() / 60 / 60 / 24 / 7)
 
 
-def get_top(prev_stat, ppl_stat, key, subkey, n, div):
-    lines = [f'Top {key}s ({subkey}):']
+def get_top(prev_stat, ppl_stat, key, subkey, n, div, filter_fn):
     ppl_prev = sorted(prev_stat.keys(), key=lambda x: prev_stat[x][key][subkey])
     ppl = sorted(ppl_stat.keys(), key=lambda x: ppl_stat[x][key][subkey])
+    lines = []
     width = 0
-    for i in range(1, n + 1):
+    i = 0
+    while len(lines) < n:
+        i += 1
+        if i >= len(ppl):
+            break
         p = ppl[-i]
+        if not filter_fn(p):
+            continue
         if p not in ppl_prev:
             move = '***'
         else:
@@ -48,10 +54,13 @@ def get_top(prev_stat, ppl_stat, key, subkey, n, div):
         else:
             width = 1
         lines.append(f"  {i:2} ({move:>3}) [{score:{width}}] {name}")
-    return lines
+
+    return [f'Top {key}s ({subkey}):'] + lines
 
 
-def print_direct(mlA, mlB, key, top_extra):
+def print_direct(mlA, mlB, key, top_extra, filter_fn=None):
+    if filter_fn is None:
+        filter_fn = lambda x: True
     out_keys = [
         ('reviewer', 'thr', 'msg', 25),
         ('author', 'thr', 'msg', 25),
@@ -62,8 +71,8 @@ def print_direct(mlA, mlB, key, top_extra):
     divB = ml_stat_weeks(mlB)
 
     for ok in out_keys:
-        left = get_top(grpA, grpB, ok[0], ok[1], ok[3] + top_extra, divB)
-        right = get_top(grpA, grpB, ok[0], ok[2], ok[3] + top_extra, divB)
+        left = get_top(grpA, grpB, ok[0], ok[1], ok[3] + top_extra, divB, filter_fn)
+        right = get_top(grpA, grpB, ok[0], ok[2], ok[3] + top_extra, divB, filter_fn)
 
         for i in range(len(left)):
             print(f'{left[i]:36} {right[i]:36}')
@@ -234,6 +243,10 @@ def main():
     parser.add_argument('--ml-stats', type=str, nargs=2, required=True)
     parser.add_argument('--top-extra', type=int, required=False, default=0,
                         help="How many extra entries to add to the top n")
+    parser.add_argument('--filter-corp', type=str, default=None,
+                        help="Show people only from a selected company")
+    parser.add_argument('--filter-one', type=str)
+    parser.add_argument('--db', type=str)
     args = parser.parse_args()
 
     with open(args.ml_stats[0]) as fp:
@@ -241,19 +254,47 @@ def main():
     with open(args.ml_stats[1]) as fp:
         mlB = json.load(fp)
 
-    print_general(mlA, 'Prev')
-    print_general(mlB, 'Curr')
-    print_diff(mlA, mlB)
+    if args.filter_corp:
+        if not args.db:
+            parser.error('--db is required for --filter-corp')
+            return
 
-    print_direct(mlA, mlB, 'individual', args.top_extra)
-    print()
-    print_direct(mlA, mlB, 'corporate', args.top_extra)
+        with open(args.db, 'r') as f:
+            db = json.load(f)
 
-    print_author_balance(mlB, 'corporate', args.top_extra)
+        filters = []
+        for entry in db['corpmap']:
+            if entry[1] == args.filter_corp:
+                filters.append(entry[0])
+        if not filters:
+            print("No mappings found for company:", args.filter_corp)
+            return
 
-    histograms = [age_histogram_ml(mlB, 'reviewer'), age_histogram_ml(mlB, 'author'),
-                  age_histogram_commits(mlB)]
-    print_histograms(histograms)
+        def filter_fn(x):
+            for fen in filters:
+                if fen in x:
+                    return True
+            return False
+
+        print_direct(mlA, mlB, f'individual', args.top_extra, filter_fn=filter_fn)
+    elif args.filter_one:
+        def filter_fn(x):
+            return args.filter_one in x
+        print_direct(mlA, mlB, f'individual', args.top_extra, filter_fn=filter_fn)
+    else:
+        print_general(mlA, 'Prev')
+        print_general(mlB, 'Curr')
+        print_diff(mlA, mlB)
+
+        print_direct(mlA, mlB, 'individual', args.top_extra)
+        print()
+        print_direct(mlA, mlB, 'corporate', args.top_extra)
+
+        print_author_balance(mlB, 'corporate', args.top_extra)
+
+        histograms = [age_histogram_ml(mlB, 'reviewer'), age_histogram_ml(mlB, 'author'),
+                      age_histogram_commits(mlB)]
+        print_histograms(histograms)
 
 
 if __name__ == "__main__":

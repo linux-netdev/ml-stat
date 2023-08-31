@@ -152,3 +152,6 @@ Ideas
 
 3. Find companies with large number of disconnected developers
    and no in house expertise.
+
+4. Split review stats between "replied to their own company"
+   vs "truly cross company".

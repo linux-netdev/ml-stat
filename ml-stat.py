@@ -669,7 +669,7 @@ def process(args, db, corp):
         for m in sorted(l):
             print(m)
     elif args.check:
-        name_selfcheck(ps.ppl_stat, mailmap)
+        name_selfcheck(ps.ppl_stat, db['mailmap'])
     elif args.name_dump:
         print(f'Names ({len(ps.ppl_stat)}):')
         print('  ' + '\n  '.join(sorted(ps.ppl_stat.keys())))

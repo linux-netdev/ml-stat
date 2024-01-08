@@ -61,7 +61,7 @@ class EmailMsg:
         return self.msg.get('subject')
 
     def is_patch(self):
-        return self.subject()[0] == '[' and not self.is_pr()
+        return self.subject()[0] == '[' and not self.is_pr() and not self.is_syzbot()
 
     def is_pr(self):
         return self.subject().find('pull req') != -1
@@ -70,9 +70,14 @@ class EmailMsg:
         subj = self.subject()
         return subj.find('Fw: [Bug ') != -1
 
+    def is_syzbot(self):
+        subj = self.subject()
+        return subj.find('[syzbot] ') != -1
+
     def is_discussion(self):
         subj = self.subject()
-        return (not self.is_pr() and (subj.find('[') == -1 and subj.find(']') == -1)) or self.is_bugzilla_forward()
+        return (not self.is_pr() and (subj.find('[') == -1 and subj.find(']') == -1)) or \
+               self.is_bugzilla_forward() or self.is_syzbot()
 
     def is_unknown(self):
         return not self.is_patch() and not self.is_discussion() and not self.is_pr()
@@ -122,7 +127,7 @@ class EmailThread:
         return self.grp['root'].get('subject')
 
     def is_patch(self):
-        return self.root_subj()[0] == '[' and not self.is_pr()
+        return self.root_subj()[0] == '[' and not self.is_pr() and not self.is_syzbot()
 
     def is_pr(self):
         return self.root_subj().find('pull req') != -1
@@ -131,9 +136,14 @@ class EmailThread:
         subj = self.root_subj()
         return subj.find('Fw: [Bug ') != -1
 
+    def is_syzbot(self):
+        subj = self.root_subj()
+        return subj.find('[syzbot] ') != -1
+
     def is_discussion(self):
         subj = self.root_subj()
-        return (not self.is_pr() and (subj.find('[') == -1 and subj.find(']') == -1)) or self.is_bugzilla_forward()
+        return (not self.is_pr() and (subj.find('[') == -1 and subj.find(']') == -1)) or \
+               self.is_bugzilla_forward() or self.is_syzbot()
 
     def is_unknown(self):
         return not self.is_patch() and not self.is_discussion() and not self.is_pr()
@@ -569,12 +579,9 @@ def group_one_msg(ps, msg, stats, force_root=False):
 
     mid = msg.get('message-id')
 
-    if not refs or force_root:
-        grp = {'root': msg, 'emails': [msg]}
-        ps.email_roots[mid] = grp
-        ps.email_grps[mid] = grp
-        stats['root'] += 1
-    else:
+    is_root = not refs or force_root
+
+    if not is_root:
         for r in refs:
             if r in refs and r in ps.email_grps:
                 grp = ps.email_grps[r]
@@ -582,9 +589,21 @@ def group_one_msg(ps, msg, stats, force_root=False):
                 ps.email_grps[mid] = grp
                 stats['match'] += 1
                 return True
-        else:
-            return False
-    return True
+
+        subj = msg.get('subject')
+        from_hdr = msg.get('from')
+        if subj.startswith('Re: [syzbot]') and '@syzkaller.appspotmail.com>' in from_hdr:
+            stats['syz-root'] += 1
+            is_root = True
+
+    if is_root:
+        grp = {'root': msg, 'emails': [msg]}
+        ps.email_roots[mid] = grp
+        ps.email_grps[mid] = grp
+        stats['root'] += 1
+        return True
+
+    return False
 
 
 def process(args, db, corp):
@@ -595,6 +614,7 @@ def process(args, db, corp):
         'match': 0,
         'miss': 0,
         'skip-asel': 0,
+        'syz-root': 0,
     }
     misses = []
 

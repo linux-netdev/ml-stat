@@ -613,7 +613,7 @@ def process(args, db, corp):
         'root': 0,
         'match': 0,
         'miss': 0,
-        'skip-asel': 0,
+        'skip-stable': 0,
         'syz-root': 0,
     }
     misses = []
@@ -634,8 +634,8 @@ def process(args, db, corp):
             print(args.email_count - i, end='\r')
 
         subj = msg.get('subject')
-        if not subj or subj.find('PATCH AUTOSEL') != -1:
-            stats['skip-asel'] += 1
+        if not subj or subj.find('PATCH AUTOSEL') != -1 or msg.get('X-stable') == 'review':
+            stats['skip-stable'] += 1
             continue
 
         force_root = subj.startswith('Fw: [Bug')

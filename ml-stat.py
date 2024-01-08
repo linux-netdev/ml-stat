@@ -266,6 +266,9 @@ def refset_add(refs, msg, key):
     ref = msg.get_all(key)
     if not ref:
         return
+    if len(ref) == 1 and ref[0].count('<') > 1:
+        ref = ref[0].split()
+        ref = filter(lambda r: len(r) and r[0] == '<' and r[-1] == '>', ref)
     refs.update(set(ref))
 
 

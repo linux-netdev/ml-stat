@@ -307,11 +307,11 @@ def prep_files(file_dir, n):
             sys.exit(1)
 
     # TODO: go to the previous repo is we run out of messages
+    git(git_dir, ['checkout', '-q', f'master'])
     for i in range(n):
         if i in files:
             continue
 
-        git(git_dir, ['checkout', f'master~{i}'])
         try:
             shutil.copy2(os.path.join(git_dir, 'm'), os.path.join(file_dir, str(i)))
         except FileNotFoundError:
@@ -320,6 +320,8 @@ def prep_files(file_dir, n):
 
         if (i % 100) == 0:
             print(f"Checking out {i}/{n}", end='\r')
+
+        git(git_dir, ['checkout', '-q', f'HEAD~'])
 
     git(git_dir, ['reset', '--hard', 'master'])
 

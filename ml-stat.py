@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import termios
+import time
 import random
 import re
 
@@ -180,6 +181,14 @@ def remove_bots(people_dict):
                 'syzbot <syzbot@syzkaller.appspotmail.com>',
                 '<patchwork-bot+bluetooth@kernel.org>']:
         people_dict.pop(bot, 0)
+
+
+def email_str_date(m):
+    dt = m.get('date')
+    parsed = email.utils.parsedate(dt)
+    timed = time.mktime(parsed)
+    dt = datetime.datetime.fromtimestamp(timed)
+    return f"{dt:%Y-%m-%d}"
 
 
 def git(tree, cmd):
@@ -606,7 +615,7 @@ def group_one_msg(ps, msg, stats, force_root=False):
     return False
 
 
-def load_threads(email_count):
+def load_threads(email_count, full_misses):
     ps = ParsingState()
 
     stats = {
@@ -663,16 +672,31 @@ def load_threads(email_count):
     for mid, grp in ps.email_roots.items():
         threads[mid] = EmailThread(grp)
 
-    print('Unknown:')
+    print('Missed thread grouping (no root):')
+    l = []
+    for m in misses:
+        l.append(email_str_date(m) + ' ' + m.get('subject') + '\t' + m.get('message-id'))
+    if full_misses:
+        l.sort()
+    else:
+        l = ['...'] + l[-10:]
+    for line in l:
+        if full_misses:
+            print(' ', line)
+        else:
+            print(f'  {line:.76}')
+
+    print('Unknown msg type:')
     for mid, thr in threads.items():
         if thr.is_unknown():
             print('  ' + thr.root_subj())
 
-    print('Bad:')
+    print('Bad msg type:')
     for mid, thr in threads.items():
         if thr.is_bad():
             print('  ' + thr.root_subj())
 
+    print('Parsing done:')
     print(stats)
     print()
 
@@ -712,12 +736,6 @@ def calc_ppl_stat(args, ps, db, corp):
         parsed_interact(threads, db)
     elif args.json_out:
         return ppl_stat
-    elif args.misses:
-        l = []
-        for m in misses:
-            l.append(m.get('subject') + '\t' + m.get('date') + '\t' + m.get('message-id'))
-        for m in sorted(l):
-            print(m)
     elif args.check:
         name_selfcheck(ppl_stat, db['mailmap'])
     elif args.name_dump:
@@ -780,7 +798,7 @@ def main():
     ages_str = ind_out = corp_out = None
     parsed = dict()
     if args.individual or args.corp or args.check:
-        parsed = load_threads(args.email_count)
+        parsed = load_threads(args.email_count, args.misses)
     if args.individual:
         ind_out = calc_ppl_stat(args, parsed, db, corp=False)
     if args.individual and args.ages and not args.check:

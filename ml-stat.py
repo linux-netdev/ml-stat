@@ -346,10 +346,16 @@ def name_check_sort(sequences, mailmap, result):
                     name = ident[:idx].lower()
                     addr = ident[idx:].lower()
                     mt = m[1].lower()
-                    if name in mt or addr in mt:
+                    if (name and name in mt) or (addr and addr in mt):
                         weak_targets.append(ident)
         if len(targets) == 0:
             targets += weak_targets
+        # One is <dude@email>, the other one is Dude <dude@email>
+        if len(targets) == 0 and len(idents) == 2:
+            if idents[1] in idents[0]:
+                idents = list(reversed(idents))
+            if idents[0] in idents[1]:
+                print(f"INFO: target identity set as a subset!")
         uniq_targets = set(targets)
         if len(uniq_targets) > 1:
             print(f"ERROR: multiple map targets for {idents}!")

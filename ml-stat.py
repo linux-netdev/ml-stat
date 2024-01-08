@@ -326,6 +326,19 @@ def prep_files(file_dir, n):
     git(git_dir, ['reset', '--hard', 'master'])
 
 
+def name_check_sort_heuristics(idents):
+    # One is <dude@email>, the other one is Dude <dude@email>
+    if len(idents) == 2:
+        if idents[1] in idents[0]:
+            idents.reverse()
+        if idents[0] in idents[1]:
+            print(f"INFO: target identity set as a subset!")
+            return
+
+    # Sort anything that contains " first
+    idents.sort(key=lambda v: -v.find('"'))
+
+
 def name_check_sort(sequences, mailmap, result):
     print("NOTE: press a - accept; r - rotate; i - ignore; s - strip names")
     for s in sequences:
@@ -350,12 +363,8 @@ def name_check_sort(sequences, mailmap, result):
                         weak_targets.append(ident)
         if len(targets) == 0:
             targets += weak_targets
-        # One is <dude@email>, the other one is Dude <dude@email>
-        if len(targets) == 0 and len(idents) == 2:
-            if idents[1] in idents[0]:
-                idents = list(reversed(idents))
-            if idents[0] in idents[1]:
-                print(f"INFO: target identity set as a subset!")
+        if len(targets) == 0:
+            name_check_sort_heuristics(idents)
         uniq_targets = set(targets)
         if len(uniq_targets) > 1:
             print(f"ERROR: multiple map targets for {idents}!")

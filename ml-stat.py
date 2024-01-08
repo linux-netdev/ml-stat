@@ -312,7 +312,11 @@ def prep_files(file_dir, n):
             continue
 
         git(git_dir, ['checkout', f'master~{i}'])
-        shutil.copy2(os.path.join(git_dir, 'm'), os.path.join(file_dir, str(i)))
+        try:
+            shutil.copy2(os.path.join(git_dir, 'm'), os.path.join(file_dir, str(i)))
+        except FileNotFoundError:
+            # Spam messages are apparently sometimes removed and called 'd' rather than 'm'
+            shutil.copy2(os.path.join(git_dir, 'd'), os.path.join(file_dir, str(i)))
 
         if (i % 100) == 0:
             print(f"Checking out {i}/{n}", end='\r')

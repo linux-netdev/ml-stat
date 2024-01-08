@@ -26,7 +26,7 @@ class ParsingState:
     def __init__(self):
         self.email_roots = dict()
         self.email_grps = dict()
-        self.ppl_stat = dict()
+        self.threads = None  # set by parser
 
         # These will be replaced by EmailMsg() instances
         self.first_msg = dict()
@@ -606,7 +606,7 @@ def group_one_msg(ps, msg, stats, force_root=False):
     return False
 
 
-def process(args, db, corp):
+def load_threads(email_count):
     ps = ParsingState()
 
     stats = {
@@ -618,10 +618,10 @@ def process(args, db, corp):
     }
     misses = []
 
-    prep_files('msg-files', args.email_count)
+    prep_files('msg-files', email_count)
 
     dated = False
-    for i in reversed(range(args.email_count)):
+    for i in reversed(range(email_count)):
         with open(f'msg-files/{i}', 'rb') as fp:
             msg = email.message_from_binary_file(fp, policy=default)
 
@@ -631,7 +631,7 @@ def process(args, db, corp):
             dated = True
 
         if (i % 100) == 0:
-            print(args.email_count - i, end='\r')
+            print(email_count - i, end='\r')
 
         subj = msg.get('subject')
         if not subj or subj.find('PATCH AUTOSEL') != -1 or msg.get('X-stable') == 'review':
@@ -673,36 +673,45 @@ def process(args, db, corp):
         if thr.is_bad():
             print('  ' + thr.root_subj())
 
+    print(stats)
+    print()
+
+    ps.threads = threads
+    return ps
+
+
+def calc_ppl_stat(args, ps, db, corp):
+    print("Calculating stats for ", "corps" if corp else "individuals", "...", sep='')
+
+    threads = ps.threads
+    ppl_stat = dict()
     use_map = get_mail_map(db, corp)
 
     for mid, thr in threads.items():
         authors = thr.authors(use_map)
         parti = thr.participants(use_map)
         for p in parti:
-            if p not in ps.ppl_stat:
-                ps.ppl_stat[p] = {'author': {'thr': 0, 'msg': 0},
+            if p not in ppl_stat:
+                ppl_stat[p] = {'author': {'thr': 0, 'msg': 0},
                                   'reviewer': {'thr': 0, 'msg': 0}}
             if p in authors:
-                ps.ppl_stat[p]['author']['thr'] += 1
-                ps.ppl_stat[p]['author']['msg'] += authors[p]
+                ppl_stat[p]['author']['thr'] += 1
+                ppl_stat[p]['author']['msg'] += authors[p]
             else:
-                ps.ppl_stat[p]['reviewer']['thr'] += 1
-                ps.ppl_stat[p]['reviewer']['msg'] += parti[p]
+                ppl_stat[p]['reviewer']['thr'] += 1
+                ppl_stat[p]['reviewer']['msg'] += parti[p]
 
-    for p in ps.ppl_stat.keys():
-        score = 10 * ps.ppl_stat[p]['reviewer']['thr'] + 2 * (ps.ppl_stat[p]['reviewer']['msg'] - 1) \
-                - 4 * ps.ppl_stat[p]['author']['msg']
-        ps.ppl_stat[p]['score'] = {'positive': score, 'negative': -score}
-
-    print(stats)
-    print()
+    for p in ppl_stat.keys():
+        score = 10 * ppl_stat[p]['reviewer']['thr'] + 2 * (ppl_stat[p]['reviewer']['msg'] - 1) \
+                - 4 * ppl_stat[p]['author']['msg']
+        ppl_stat[p]['score'] = {'positive': score, 'negative': -score}
 
     if args.proc:
         pass
     elif args.interact:
-        return parsed_interact(threads, db)
+        parsed_interact(threads, db)
     elif args.json_out:
-        return ps
+        return ppl_stat
     elif args.misses:
         l = []
         for m in misses:
@@ -710,10 +719,10 @@ def process(args, db, corp):
         for m in sorted(l):
             print(m)
     elif args.check:
-        name_selfcheck(ps.ppl_stat, db['mailmap'])
+        name_selfcheck(ppl_stat, db['mailmap'])
     elif args.name_dump:
-        print(f'Names ({len(ps.ppl_stat)}):')
-        print('  ' + '\n  '.join(sorted(ps.ppl_stat.keys())))
+        print(f'Names ({len(ppl_stat)}):')
+        print('  ' + '\n  '.join(sorted(ppl_stat.keys())))
     else:
         out_keys = [
             ('reviewer', 'thr', 10),
@@ -727,11 +736,11 @@ def process(args, db, corp):
         if args.name:
             for name in args.name:
                 for ok in out_keys:
-                    print_one(ps.ppl_stat, ok[0], ok[1], name)
+                    print_one(ppl_stat, ok[0], ok[1], name)
         else:
             for ok in out_keys:
-                print_top(ps.ppl_stat, ok[0], ok[1], ok[2] + args.top_extra)
-        return ps
+                print_top(ppl_stat, ok[0], ok[1], ok[2] + args.top_extra)
+        return ppl_stat
 
 
 def main():
@@ -769,18 +778,21 @@ def main():
         db = json.load(f)
 
     ages_str = ind_out = corp_out = None
+    parsed = dict()
+    if args.individual or args.corp or args.check:
+        parsed = load_threads(args.email_count)
     if args.individual:
-        ind_out = process(args, db, corp=False)
+        ind_out = calc_ppl_stat(args, parsed, db, corp=False)
     if args.individual and args.ages and not args.check:
         author_history = get_author_history(db['mailmap'])
-        ages = get_ages(ind_out.ppl_stat.keys(), author_history)
+        ages = get_ages(ind_out.keys(), author_history)
         ages_str = {}
         for x, y in ages.items():
             if y:
                 y = y.isoformat()
             ages_str[x] = y
     if args.corp and not args.check:
-        corp_out = process(args, db, corp=True)
+        corp_out = calc_ppl_stat(args, parsed, db, corp=True)
 
     if args.json_out:
         if os.path.exists(args.json_out):
@@ -792,14 +804,14 @@ def main():
         data |= {
             "count": args.email_count,
 
-            "first_date": ind_out.first_msg.get('date'),
-            "last_date": ind_out.last_msg.get('date'),
-            "first_msg_id": ind_out.first_msg.get('message-id'),
-            "last_msg_id": ind_out.last_msg.get('message-id'),
+            "first_date": parsed.first_msg.get('date'),
+            "last_date": parsed.last_msg.get('date'),
+            "first_msg_id": parsed.first_msg.get('message-id'),
+            "last_msg_id": parsed.last_msg.get('message-id'),
 
             "ages": ages_str,
-            "individual": ind_out.ppl_stat,
-            "corporate": corp_out.ppl_stat,
+            "individual": ind_out,
+            "corporate": corp_out,
         }
 
         with open(args.json_out, "w") as fp:

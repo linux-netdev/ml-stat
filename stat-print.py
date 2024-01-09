@@ -97,33 +97,7 @@ def print_author_balance(mlB, key, top_extra):
     print()
 
 
-def age_histogram(ml, names, filter_fn):
-    histogram = {
-        'unknown': 0,
-        'no commit': 0,
-    }
-
-    ages = ml['ages']
-    # Get array of ages in months
-    now = datetime.datetime.now()
-    months = []
-    for name in names:
-        if not filter_fn(name):
-            continue
-        if name not in ages:
-            print('Histogram: no commit or message from', name)
-            histogram['unknown'] += 1
-            continue
-        start_date = ages[name]
-        if not start_date:
-            print('Histogram: no commit (but msg) from ', name)
-            histogram['no commit'] += 1
-            continue
-
-        start = datetime.datetime.fromisoformat(start_date)
-        age = (now - start).total_seconds() / 60 / 60 / 24 / 30
-        months.append(age)
-
+def age_histogram_bucketize(months, histogram):
     left = months
     i = 3
     while len(left):
@@ -142,18 +116,76 @@ def age_histogram(ml, names, filter_fn):
     return histogram
 
 
-def age_histogram_ml(ml, role):
+def age_histogram_bucketize_uni(months, histogram):
+    left = months
+    i = 12
+    while len(left):
+        months = left
+        left = []
+        histogram[i] = 0
+        for m in months:
+            if m < i:
+                histogram[i] += 1
+            else:
+                left.append(m)
+        if i < 24:
+            i *= 2
+        else:
+            i += 12
+    return histogram
+
+
+def age_histogram(ml, names, args, filter_fn):
+    histogram = {
+        'unknown': 0,
+        'no commit': 0,
+    }
+
+    ages = ml['ages']
+    # Get array of ages in months
+    if args.hist_fixed_time:
+        now = datetime.datetime.now()
+    else:
+        now = parsedate_to_datetime(ml['last_date'])
+        now = now.replace(tzinfo=None)
+    months = []
+    for name in names:
+        if not filter_fn(name):
+            continue
+        if name not in ages:
+            print('Histogram: no commit or message from', name)
+            histogram['unknown'] += 1
+            continue
+        start_date = ages[name]
+        if not start_date:
+            print('Histogram: no commit (but msg) from ', name)
+            histogram['no commit'] += 1
+            continue
+
+        start = datetime.datetime.fromisoformat(start_date)
+        age = (now - start).total_seconds() / 60 / 60 / 24 / 30
+        months.append(age)
+
+    if args.hist_uniform:
+        return age_histogram_bucketize_uni(months, histogram)
+    else:
+        return age_histogram_bucketize(months, histogram)
+
+
+def age_histogram_ml(ml, role, args):
     def is_active(name):
         person = ml['individual'][name]
         return role in person and person[role]['msg']
-    return role, age_histogram(ml, ml['individual'].keys(), is_active)
+    return role, age_histogram(ml, ml['individual'].keys(),
+                               args, is_active)
 
 
-def age_histogram_commits(ml):
-    return "commits", age_histogram(ml, ml['git']['commit_authors'].keys(), lambda x: True)
+def age_histogram_commits(ml, args):
+    return "commits", age_histogram(ml, ml['git']['commit_authors'].keys(),
+                                    args, lambda x: True)
 
 
-def print_histograms(hist_list):
+def print_histograms(args, hist_list, hist_list_old):
     max_line = 0
     for _, histogram in hist_list:
         total = sum(histogram.values())
@@ -166,6 +198,8 @@ def print_histograms(hist_list):
     for role, histogram in hist_list:
         print("Tenure for", role)
         total = sum(histogram.values())
+        old_hist = [h for r, h in hist_list_old if r == role][0]
+        old_total = sum(histogram.values())
         for k, v in histogram.items():
             dot = '*'
             if isinstance(k, str):
@@ -182,7 +216,24 @@ def print_histograms(hist_list):
                 else:
                     t = f'{k // 2}mo-{k // 12}yr'
             prev_k = k
-            print(f'{t:9} | {v:3} | {dot * int(v / total * per_dot)}')
+
+            cur_v = v / total * per_dot
+            old_v = old_hist.get(k, 0) / old_total * per_dot
+            normal_v = cur_v
+            minus_v = 0
+            plus_v = 0
+            if not args.hist_diff:
+                pass
+            elif old_v < cur_v:
+                normal_v = old_v
+                plus_v = cur_v - old_v
+            else:
+                minus_v = old_v - cur_v
+
+            line  = f"{dot * int(normal_v)}"
+            line += f"{'+' * int(plus_v)}"
+            line += f"{'.' * int(minus_v)}"
+            print(f'{t:9} | {v:3} | {line}')
         print()
 
 
@@ -246,6 +297,12 @@ def main():
     parser.add_argument('--filter-corp', type=str, default=None,
                         help="Show people only from a selected company")
     parser.add_argument('--filter-one', type=str)
+    parser.add_argument('--hist-uniform', default=False, action="store_true",
+                        help="Make all histogram buckets 1 year")
+    parser.add_argument('--hist-diff', default=False, action="store_true",
+                        help="Show histogram diff rather than current values")
+    parser.add_argument('--hist-fixed-time', default=False, action="store_true",
+                        help="Make all age calculation relative to now")
     parser.add_argument('--db', type=str)
     args = parser.parse_args()
 
@@ -292,10 +349,13 @@ def main():
 
         print_author_balance(mlB, 'corporate', args.top_extra)
 
-        histograms = [age_histogram_ml(mlB, 'reviewer'), age_histogram_ml(mlB, 'author'),
-                      age_histogram_commits(mlB)]
-        print_histograms(histograms)
-
+        histograms_old = [age_histogram_ml(mlA, 'reviewer', args),
+                          age_histogram_ml(mlA, 'author', args),
+                          age_histogram_commits(mlA, args)]
+        histograms = [age_histogram_ml(mlB, 'reviewer', args),
+                      age_histogram_ml(mlB, 'author', args),
+                      age_histogram_commits(mlB, args)]
+        print_histograms(args, histograms, histograms_old)
 
 if __name__ == "__main__":
     main()

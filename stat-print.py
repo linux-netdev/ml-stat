@@ -5,6 +5,7 @@ import argparse
 import datetime
 import json
 import math
+import re
 from email.utils import parsedate_to_datetime
 
 
@@ -289,6 +290,39 @@ def print_diff(mlA, mlB):
     print()
 
 
+def dict_sum_int(a, b):
+    for k, v in b.items():
+        if isinstance(v, int):
+            if k == 'max':
+                a[k] = max(a.get(k, 0), v)
+            else:
+                a[k] = a.get(k, 0) + v
+        elif isinstance(v, dict):
+            a[k] = a.get(k, {})
+            dict_sum_int(a[k], v)
+        else:
+            raise Exception("Int-sum of dict, bad key", k, "value", v)
+
+
+def print_cs_sub_by(cs_stat, caption, key):
+    result = {}
+    for mkey, v in cs_stat.items():
+        if re.match(key, mkey):
+            dict_sum_int(result, v)
+    print(caption, result, 'avg revisions:', result['sum'] / result['cnt'])
+    return result
+
+
+def print_change_set_stat(cs_stat):
+    print("Change sets:")
+    reviewed = print_cs_sub_by(cs_stat, "Accepted + reviewed:", '.ra')
+    not_reviewed = print_cs_sub_by(cs_stat, "Accepted - reviewed:", '.-a')
+    print_cs_sub_by(cs_stat, "Accepted, single:", 's.a')
+    print_cs_sub_by(cs_stat, "Accepted, set:", 'm.a')
+    print("Review ratio:", reviewed['cnt'] / (reviewed['cnt'] + not_reviewed['cnt']))
+    print()
+
+
 def main():
     parser = argparse.ArgumentParser(description='Stats pretty printer')
     parser.add_argument('--ml-stats', type=str, nargs=2, required=True)
@@ -356,6 +390,8 @@ def main():
                       age_histogram_ml(mlB, 'author', args),
                       age_histogram_commits(mlB, args)]
         print_histograms(args, histograms, histograms_old)
+        if mlB.get('change-sets'):
+            print_change_set_stat(mlB['change-sets'])
 
 if __name__ == "__main__":
     main()

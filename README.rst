@@ -129,13 +129,7 @@ They are all deprecated now by ``git-stat.py``.
 TODO
 ----
 
-1. Count a series as one across versions.
-   This should also let us find repost violations.
-
-2. Calculate stats for pw checks (per check and per person?)
-   Download all the data from pw and filter by delegate.
-
-3. How many authors have not appeared on the list.
+1. How many authors have not appeared on the list.
 
 Ideas
 -----

@@ -227,6 +227,18 @@ class ChangeSet:
         if not self.has_pwbot_accept:
             self.has_pwbot_accept |= thr.has_pwbot_accept
 
+    def participants(self, mapping):
+        people = dict()
+        for thr in self.threads:
+            people |= thr.participants(mapping)
+        return people
+
+    def authors(self, mapping):
+        people = dict()
+        for thr in self.threads:
+            people |= thr.authors(mapping)
+        return people
+
     @staticmethod
     def get_key(subject):
         idx = subject.rfind(']')
@@ -828,8 +840,8 @@ def calc_ppl_stat(args, ps, db, corp):
         parti = thr.participants(use_map)
         for p in parti:
             if p not in ppl_stat:
-                ppl_stat[p] = {'author': {'thr': 0, 'msg': 0},
-                                  'reviewer': {'thr': 0, 'msg': 0}}
+                ppl_stat[p] = {'author': {'cs': 0, 'thr': 0, 'msg': 0},
+                               'reviewer': {'cs': 0, 'thr': 0, 'msg': 0}}
             if p in authors:
                 ppl_stat[p]['author']['thr'] += 1
                 ppl_stat[p]['author']['msg'] += authors[p]
@@ -837,9 +849,22 @@ def calc_ppl_stat(args, ps, db, corp):
                 ppl_stat[p]['reviewer']['thr'] += 1
                 ppl_stat[p]['reviewer']['msg'] += parti[p]
 
+    for cs in ps.change_sets.values():
+        authors = cs.authors(use_map)
+        parti = cs.participants(use_map)
+
+        for p in parti:
+            if p in authors:
+                ppl_stat[p]['author']['cs'] += 1
+            else:
+                ppl_stat[p]['reviewer']['cs'] += 1
+
     for p in ppl_stat.keys():
-        score = 10 * ppl_stat[p]['reviewer']['thr'] + 2 * (ppl_stat[p]['reviewer']['msg'] - 1) \
-                - 4 * ppl_stat[p]['author']['msg']
+        score = 0
+        score += 2 * ppl_stat[p]['reviewer']['cs']
+        score += 8 * ppl_stat[p]['reviewer']['thr']
+        score += 2 * (ppl_stat[p]['reviewer']['msg'] - 1)
+        score -= 4 * ppl_stat[p]['author']['msg']
         ppl_stat[p]['score'] = {'positive': score, 'negative': -score}
 
     if args.proc:
@@ -855,8 +880,10 @@ def calc_ppl_stat(args, ps, db, corp):
         print('  ' + '\n  '.join(sorted(ppl_stat.keys())))
     else:
         out_keys = [
+            ('reviewer', 'cs', 10),
             ('reviewer', 'thr', 10),
             ('reviewer', 'msg', 10),
+            ('author', 'cs', 15),
             ('author', 'thr', 15),
             ('author', 'msg', 10),
             ('score', 'positive', 15),

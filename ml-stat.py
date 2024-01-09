@@ -706,7 +706,7 @@ def load_threads(email_count, full_misses):
             print(msg.get('date'))
             dated = True
 
-        if (i % 100) == 0:
+        if (email_count - i) % 100 == 0 or i == 0:
             print(email_count - i, end='\r')
 
         subj = msg.get('subject')
@@ -921,6 +921,7 @@ def main():
     if args.individual:
         ind_out = calc_ppl_stat(args, parsed, db, corp=False)
     if args.individual and args.ages and not args.check:
+        print("Calculating author ages from git...")
         author_history = get_author_history(db['mailmap'])
         ages = get_ages(ind_out.keys(), author_history)
         ages_str = {}

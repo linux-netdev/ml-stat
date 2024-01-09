@@ -54,29 +54,27 @@ def getch():
     return c
 
 
-class EmailMsg:
-    def __init__(self, msg):
-        self.msg = msg
+class EmailPost:
+    def __init__(self, subject):
+        self._subject = subject
 
     def subject(self):
-        return self.msg.get('subject')
+        return self._subject
 
     def is_patch(self):
-        return self.subject()[0] == '[' and not self.is_pr() and not self.is_syzbot()
+        return self._subject[0] == '[' and not self.is_pr() and not self.is_syzbot()
 
     def is_pr(self):
-        return self.subject().find('pull req') != -1
+        return self._subject.find('pull req') != -1
 
     def is_bugzilla_forward(self):
-        subj = self.subject()
-        return subj.find('Fw: [Bug ') != -1
+        return self._subject.find('Fw: [Bug ') != -1
 
     def is_syzbot(self):
-        subj = self.subject()
-        return subj.find('[syzbot] ') != -1
+        return self._subject.find('[syzbot] ') != -1
 
     def is_discussion(self):
-        subj = self.subject()
+        subj = self._subject
         return (not self.is_pr() and (subj.find('[') == -1 and subj.find(']') == -1)) or \
                self.is_bugzilla_forward() or self.is_syzbot()
 
@@ -85,6 +83,13 @@ class EmailMsg:
 
     def is_bad(self):
         return self.is_patch() + self.is_discussion() + self.is_pr() > 1
+
+
+class EmailMsg(EmailPost):
+    def __init__(self, msg):
+        super().__init__(msg.get('subject'))
+
+        self.msg = msg
 
     def get(self, key):
         return self.msg.get(key)
@@ -108,8 +113,10 @@ class EmailMsg:
         return ret
 
 
-class EmailThread:
+class EmailThread(EmailPost):
     def __init__(self, grp):
+        super().__init__(grp['root'].get('subject'))
+
         self.grp = grp
         self.root = grp['root']
         self.msgs = []
@@ -125,32 +132,7 @@ class EmailThread:
         return self.grp['root']
 
     def root_subj(self):
-        return self.grp['root'].get('subject')
-
-    def is_patch(self):
-        return self.root_subj()[0] == '[' and not self.is_pr() and not self.is_syzbot()
-
-    def is_pr(self):
-        return self.root_subj().find('pull req') != -1
-
-    def is_bugzilla_forward(self):
-        subj = self.root_subj()
-        return subj.find('Fw: [Bug ') != -1
-
-    def is_syzbot(self):
-        subj = self.root_subj()
-        return subj.find('[syzbot] ') != -1
-
-    def is_discussion(self):
-        subj = self.root_subj()
-        return (not self.is_pr() and (subj.find('[') == -1 and subj.find(']') == -1)) or \
-               self.is_bugzilla_forward() or self.is_syzbot()
-
-    def is_unknown(self):
-        return not self.is_patch() and not self.is_discussion() and not self.is_pr()
-
-    def is_bad(self):
-        return self.is_patch() + self.is_discussion() + self.is_pr() > 1
+        return self._subject
 
     def participants(self, mapping):
         people = dict()

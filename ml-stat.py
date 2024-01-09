@@ -625,6 +625,7 @@ def load_threads(email_count, full_misses):
         'root': 0,
         'match': 0,
         'miss': 0,
+        'skip': 0,
         'skip-stable': 0,
         'syz-root': 0,
     }
@@ -633,6 +634,7 @@ def load_threads(email_count, full_misses):
     prep_files('msg-files', email_count)
 
     dated = False
+    stable_mids = set()
     for i in reversed(range(email_count)):
         with open(f'msg-files/{i}', 'rb') as fp:
             msg = email.message_from_binary_file(fp, policy=default)
@@ -646,11 +648,15 @@ def load_threads(email_count, full_misses):
             print(email_count - i, end='\r')
 
         subj = msg.get('subject')
-        if not subj or subj.find('PATCH AUTOSEL') != -1 or msg.get('X-stable') == 'review':
-            stats['skip-stable'] += 1
+        if not subj:
+            stats['skip'] += 1
             continue
 
         force_root = subj.startswith('Fw: [Bug')
+        if subj.find('PATCH AUTOSEL') != -1 or msg.get('X-stable') == 'review':
+            stable_mids.add(msg.get('message-id'))
+            force_root |= True
+            stats['skip-stable'] += 1
 
         if not group_one_msg(ps, msg, stats, force_root=force_root):
             misses.append(msg)
@@ -670,6 +676,10 @@ def load_threads(email_count, full_misses):
                 i += 1
 
     stats['miss'] = len(misses)
+
+    for k in stable_mids:
+        ps.email_grps.pop(k, None)
+        ps.email_roots.pop(k, None)
 
     threads = dict()
     for mid, grp in ps.email_roots.items():

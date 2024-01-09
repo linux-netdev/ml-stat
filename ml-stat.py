@@ -61,8 +61,14 @@ class EmailPost:
     def subject(self):
         return self._subject
 
+    def _is_discussion(self):
+        for tag in ['[syzbot] ', '[ANN]', 'Fw: [Bug ']:
+            if tag in self._subject:
+                return True
+        return False
+
     def is_patch(self):
-        return self._subject[0] == '[' and not self.is_pr() and not self.is_syzbot()
+        return self._subject[0] == '[' and not self.is_pr() and not self._is_discussion()
 
     def is_pr(self):
         return self._subject.find('pull req') != -1
@@ -70,13 +76,10 @@ class EmailPost:
     def is_bugzilla_forward(self):
         return self._subject.find('Fw: [Bug ') != -1
 
-    def is_syzbot(self):
-        return self._subject.find('[syzbot] ') != -1
-
     def is_discussion(self):
         subj = self._subject
         return (not self.is_pr() and (subj.find('[') == -1 and subj.find(']') == -1)) or \
-               self.is_bugzilla_forward() or self.is_syzbot()
+               self._is_discussion()
 
     def is_unknown(self):
         return not self.is_patch() and not self.is_discussion() and not self.is_pr()

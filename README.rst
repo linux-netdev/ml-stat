@@ -129,17 +129,13 @@ They are all deprecated now by ``git-stat.py``.
 TODO
 ----
 
-1. Compute review coverage (% of sets which went in with no reviews
-   across all posted revisions). Vs by simply counting review tags.
-   (Done based on commits for now).
-
-2. Count a series as one across versions.
+1. Count a series as one across versions.
    This should also let us find repost violations.
 
-3. Calculate stats for pw checks (per check and per person?)
+2. Calculate stats for pw checks (per check and per person?)
    Download all the data from pw and filter by delegate.
 
-4. How many authors have not appeared on the list.
+3. How many authors have not appeared on the list.
 
 Ideas
 -----

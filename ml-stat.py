@@ -6,6 +6,7 @@ import datetime
 import email
 import email.utils
 import fcntl
+import itertools
 import json
 import filecmp
 import os
@@ -28,6 +29,8 @@ class ParsingState:
         self.email_roots = dict()
         self.email_grps = dict()
         self.threads = None  # set by parser
+        self.change_sets = dict()
+        self.cs_stat = None  # set by parser, change set stats
 
         # These will be replaced by EmailMsg() instances
         self.first_msg = dict()
@@ -94,6 +97,38 @@ class EmailMsg(EmailPost):
 
         self.msg = msg
 
+        self._review = None
+        self._accept = None
+
+    def _is_review_tag(self):
+        if not self.subject().startswith('Re: '):
+            return False
+
+        body = self.msg.get_body(preferencelist=('plain',))
+        if body is None:
+            return False
+        try:
+            body_str = body.as_string()
+        except LookupError:
+            return False
+
+        lines = body_str.split()
+        for l in lines:
+            if l.startswith('Reviewed-') or l.startswith('Acked-'):
+                return True
+        return False
+
+    def is_review_tag(self):
+        if self._review is None:
+            self._review = self._is_review_tag()
+        return self._review
+
+    def is_pwbot_accept(self):
+        if self._accept is None:
+            from_hdr = self.msg.get('From')
+            self._accept = from_hdr.startswith('patchwork-bot+') and '@kernel.org' in from_hdr
+        return self._accept
+
     def get(self, key):
         return self.msg.get(key)
 
@@ -125,17 +160,35 @@ class EmailThread(EmailPost):
         self.msgs = []
         self.root_msg = None
 
+        self.has_review_tags = False
+        self.has_pwbot_accept = False
+
+        is_patch = self.is_patch()
+
         for msg in self.grp['emails']:
             emsg = EmailMsg(msg)
             if msg is self.root:
                 self.root_msg = emsg
             self.msgs.append(emsg)
 
+            if is_patch and not self.has_review_tags:
+                self.has_review_tags |= emsg.is_review_tag()
+            if is_patch and not self.has_pwbot_accept:
+                self.has_pwbot_accept |= emsg.is_pwbot_accept()
+
     def root(self):
         return self.grp['root']
 
     def root_subj(self):
         return self._subject
+
+    def patch_count(self):
+        cnt = 0
+        for msg in self.msgs:
+            subj = msg.subject()
+            if subj[0] == '[' and ' 0/' not in subj:
+                cnt += 1
+        return cnt
 
     def participants(self, mapping):
         people = dict()
@@ -157,6 +210,30 @@ class EmailThread(EmailPost):
                     people[person] += 1
         remove_bots(people)
         return people
+
+
+class ChangeSet:
+    def __init__(self, thr):
+        self.threads = []
+        self.has_pwbot_accept = False
+        self.has_review_tags = False
+
+        self.add_thread(thr)
+
+    def add_thread(self, thr):
+        self.threads.append(thr)
+        if not self.has_review_tags:
+            self.has_review_tags |= thr.has_review_tags
+        if not self.has_pwbot_accept:
+            self.has_pwbot_accept |= thr.has_pwbot_accept
+
+    @staticmethod
+    def get_key(subject):
+        idx = subject.rfind(']')
+        if idx == -1:
+            print('ChangeSet subject has no ]:', subject)
+            return subject
+        return subject[idx + 1:]
 
 
 def remove_bots(people_dict):
@@ -694,6 +771,43 @@ def load_threads(email_count, full_misses):
         if thr.is_bad():
             print('  ' + thr.root_subj())
 
+    for thr in threads.values():
+        if not thr.is_patch():
+            continue
+
+        cs_key = ChangeSet.get_key(thr.root_subj())
+        if cs_key in ps.change_sets:
+            ps.change_sets[cs_key].add_thread(thr)
+        else:
+            ps.change_sets[cs_key] = ChangeSet(thr)
+
+    cs_stat = {}
+    zero_len_cs = []
+    for i in itertools.product(['s', 'm'], ['r', '-'], ['a', '-']):
+        cs_stat[''.join(i)] = {'cnt': 0, 'max': 0, 'sum': 0, 'hist': {}}
+    for cs in ps.change_sets.values():
+        if cs.threads[0].patch_count() == 0:
+            zero_len_cs.append(cs)
+            continue
+
+        mkey = ('m' if cs.threads[0].patch_count() > 1 else 's') + \
+               ('r' if cs.has_review_tags else '-') + \
+               ('a' if cs.has_pwbot_accept else '-')
+
+        cs_stat[mkey]['cnt'] += 1
+        post_cnt = len(cs.threads)
+        cs_stat[mkey]['sum'] += post_cnt
+        cs_stat[mkey]['max'] = max(cs_stat[mkey]['max'], post_cnt)
+
+        while len(cs_stat[mkey]['hist']) < post_cnt:
+            cs_stat[mkey]['hist'][len(cs_stat[mkey]['hist']) + 1] = 0
+        cs_stat[mkey]['hist'][post_cnt] += 1
+    if zero_len_cs:
+        subjects = [cs.threads[0].subject() for cs in zero_len_cs]
+        print('Zero-length change sets:\n ', '\n  '.join(subjects))
+    ps.cs_stat = cs_stat
+    print()
+
     print('Parsing done:')
     print(stats)
     print()
@@ -757,6 +871,13 @@ def calc_ppl_stat(args, ps, db, corp):
             for ok in out_keys:
                 print_top(ppl_stat, ok[0], ok[1], ok[2] + args.top_extra)
         return ppl_stat
+
+
+def print_change_set_stat(ps):
+    print("Change sets (m/s: patch vs series; r/-: review tag on list; a/-: pw-bot accept):")
+    for mkey, v in ps.cs_stat.items():
+        print('  ', mkey, v, 'avg revisions:', v['sum'] / v['cnt'])
+    print()
 
 
 def main():
@@ -825,6 +946,8 @@ def main():
             "first_msg_id": parsed.first_msg.get('message-id'),
             "last_msg_id": parsed.last_msg.get('message-id'),
 
+            "change-sets": parsed.cs_stat,
+
             "ages": ages_str,
             "individual": ind_out,
             "corporate": corp_out,
@@ -832,7 +955,8 @@ def main():
 
         with open(args.json_out, "w") as fp:
             json.dump(data, fp)
-
+    elif parsed:
+        print_change_set_stat(parsed)
 
 if __name__ == "__main__":
     main()

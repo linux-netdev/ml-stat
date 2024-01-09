@@ -19,6 +19,7 @@ import random
 import re
 
 from email.policy import default
+from email.utils import parsedate_to_datetime
 
 
 args = None
@@ -101,6 +102,7 @@ class EmailMsg(EmailPost):
         self._accept = None
 
     def _is_review_tag(self):
+        # TODO: also match RE?
         if not self.subject().startswith('Re: '):
             return False
 
@@ -257,6 +259,7 @@ def remove_bots(people_dict):
         people_dict.pop(bot, 0)
 
 
+# TODO: this is just parsedate_to_datetime from
 def email_str_date(m):
     dt = m.get('date')
     parsed = email.utils.parsedate(dt)

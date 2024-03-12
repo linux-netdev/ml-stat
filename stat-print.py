@@ -59,12 +59,12 @@ def get_top(prev_stat, ppl_stat, key, subkey, n, div, filter_fn):
     return [f'Top {key}s ({subkey}):'] + lines
 
 
-def print_direct(mlA, mlB, key, top_extra, filter_fn=None):
+def print_direct(args, mlA, mlB, key, top_extra, filter_fn=None):
     if filter_fn is None:
         filter_fn = lambda x: True
     out_keys = [
-        ('reviewer', 'thr', 'msg', 25),
-        ('author', 'thr', 'msg', 25),
+        ('reviewer', args.group_key, 'msg', 25),
+        ('author', args.group_key, 'msg', 25),
         ('score', 'positive', 'negative', 25)
     ]
     grpA = mlA[key]
@@ -326,6 +326,8 @@ def print_change_set_stat(cs_stat):
 def main():
     parser = argparse.ArgumentParser(description='Stats pretty printer')
     parser.add_argument('--ml-stats', type=str, nargs=2, required=True)
+    parser.add_argument('--group-key', type=str, default="cs",
+                        help="Group left column by change sets (cs) or threads (thr)")
     parser.add_argument('--top-extra', type=int, required=False, default=0,
                         help="How many extra entries to add to the top n")
     parser.add_argument('--filter-corp', type=str, default=None,
@@ -339,6 +341,9 @@ def main():
                         help="Make all age calculation relative to now")
     parser.add_argument('--db', type=str)
     args = parser.parse_args()
+
+    if args.group_key not in ['cs', 'thr']:
+        raise argparse.ArgumentError('--group-key must be cs or thr')
 
     with open(args.ml_stats[0]) as fp:
         mlA = json.load(fp)
@@ -367,19 +372,19 @@ def main():
                     return True
             return False
 
-        print_direct(mlA, mlB, f'individual', args.top_extra, filter_fn=filter_fn)
+        print_direct(args, mlA, mlB, f'individual', args.top_extra, filter_fn=filter_fn)
     elif args.filter_one:
         def filter_fn(x):
             return args.filter_one in x
-        print_direct(mlA, mlB, f'individual', args.top_extra, filter_fn=filter_fn)
+        print_direct(args, mlA, mlB, f'individual', args.top_extra, filter_fn=filter_fn)
     else:
         print_general(mlA, 'Prev')
         print_general(mlB, 'Curr')
         print_diff(mlA, mlB)
 
-        print_direct(mlA, mlB, 'individual', args.top_extra)
+        print_direct(args, mlA, mlB, 'individual', args.top_extra)
         print()
-        print_direct(mlA, mlB, 'corporate', args.top_extra)
+        print_direct(args, mlA, mlB, 'corporate', args.top_extra)
 
         print_author_balance(mlB, 'corporate', args.top_extra)
 

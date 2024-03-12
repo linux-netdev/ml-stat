@@ -658,6 +658,7 @@ def parsed_interact(threads, db):
         print("Participants:", thr.participants(indmap))
         print("C Authors:", thr.authors(corpmap))
         print("C Participants:", thr.participants(corpmap))
+        print("ChangeSet key:", ChangeSet.get_key(thr.root_subj()))
         print()
 
 

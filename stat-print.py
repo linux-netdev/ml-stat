@@ -154,12 +154,12 @@ def age_histogram(ml, names, args, filter_fn):
         if not filter_fn(name):
             continue
         if name not in ages:
-            print('Histogram: no commit or message from', name)
+            # print('Histogram: no commit or message from', name)
             histogram['unknown'] += 1
             continue
         start_date = ages[name]
         if not start_date:
-            print('Histogram: no commit (but msg) from ', name)
+            # print('Histogram: no commit (but msg) from ', name)
             histogram['no commit'] += 1
             continue
 

@@ -368,7 +368,7 @@ def print_one(ppl_stat, key, subkey, p):
     print(f"  #{i:2}. [{ppl_stat[p][key][subkey]:3}] {p}")
 
 
-def prep_files(file_dir, n):
+def prep_files(file_dir):
     # os.listdir
     # os.path import isfile, join
 
@@ -397,6 +397,7 @@ def prep_files(file_dir, n):
         files.add(int(f))
 
     until = args.until
+    n = int(git(git_dir, ['rev-list', '--count', f'{args.since}..{until}']))
 
     # Sanity check
     if len(files):
@@ -425,6 +426,7 @@ def prep_files(file_dir, n):
         git(git_dir, ['checkout', '-q', f'HEAD~'])
 
     git(git_dir, ['reset', '--hard', until])
+    return n
 
 
 def name_check_sort_heuristics(idents):
@@ -698,7 +700,7 @@ def group_one_msg(ps, msg, stats, force_root=False):
     return False
 
 
-def load_threads(email_count, full_misses):
+def load_threads(full_misses):
     ps = ParsingState()
 
     stats = {
@@ -711,7 +713,7 @@ def load_threads(email_count, full_misses):
     }
     misses = []
 
-    prep_files('msg-files', email_count)
+    email_count = prep_files('msg-files')
 
     dated = False
     stable_mids = set()
@@ -831,7 +833,7 @@ def load_threads(email_count, full_misses):
     print()
 
     ps.threads = threads
-    return ps
+    return email_count, ps
 
 
 def calc_ppl_stat(args, ps, db, corp):
@@ -915,7 +917,10 @@ def print_change_set_stat(ps):
 
 def main():
     parser = argparse.ArgumentParser(description='Mailing list stats')
-    parser.add_argument('--until', type=str, default='master', help="SHA1 in the repo to work from")
+    parser.add_argument('--until', type=str, default='master',
+                        help="ref of the newest message in the mailing list repo")
+    parser.add_argument('--since', type=str, required=True,
+                        help="ref of the oldest message in the mailing list repo")
     parser.add_argument('--linux', type=str, required=True, help="Path to the Linux kernel git tree")
     parser.add_argument('--no-individual', dest='individual', action='store_false', default=True,
                         help="Do not print the stats by individual people")
@@ -924,8 +929,6 @@ def main():
     parser.add_argument('--no-ages', dest='ages', action='store_false', default=True,
                         help="Do not print member tenure stats")
     parser.add_argument('--db', type=str, required=True)
-    parser.add_argument('--email-count', type=int, required=True,
-                        help="How many emails to look back into the archive")
     parser.add_argument('--repo', dest='repo', default='netdev',
                         help="Name of the lore archive (without the number and .git suffix)")
     parser.add_argument('--json-out', dest='json_out', default='',
@@ -951,7 +954,7 @@ def main():
     ages_str = ind_out = corp_out = None
     parsed = dict()
     if args.individual or args.corp or args.check:
-        parsed = load_threads(args.email_count, args.misses)
+        email_count, parsed = load_threads(args.misses)
     if args.individual:
         ind_out = calc_ppl_stat(args, parsed, db, corp=False)
     if args.individual and args.ages and not args.check:
@@ -974,7 +977,7 @@ def main():
             data = {}
 
         data |= {
-            "count": args.email_count,
+            "count": email_count,
 
             "first_date": parsed.first_msg.get('date'),
             "last_date": parsed.last_msg.get('date'),

@@ -14,18 +14,16 @@ The script requires a clone of the mail archive::
 
   git clone https://lore.kernel.org/netdev/2/ netdev-2.git
 
-For efficiency it makes a copy of the specified number of email messages
-under the `msg-files` directory.
+For efficiency it makes a copy of the email messages under the `msg-files`
+directory. ``--since`` is the git ref of the commit in the mailing list
+repo before the commit with the first message (usually commit with PR
+for the previous release), ``--until`` is the last message to use
+(PR for the current release).
 
 Example use::
 
-  ./ml-stat.py --db ./db.json --email-count 5362 --repo netdev \
-                --linux ../linux --json-out netdev-6.4.json
-
-Use `git log` in the ml repo to find the right number of emails to look
-back at. Find the first message of interest and use::
-
-  git rev-list --count $start-hash..master
+  ./ml-stat.py --db ./db.json --since bb545da872c8 --until 0109af6d7037 \
+		--repo netdev --linux ../linux --json-out netdev-6.4.json
 
 Before generating the stats it's recommended to run the self checks,
 to make sure that the email mailmap and parsing are okay.
@@ -79,7 +77,7 @@ Checks
 
 Basic self-check::
 
-  ./ml-stat.py --db db.json --email-count 16712 \
+  ./ml-stat.py --db db.json --since bb545da872c8 --until 0109af6d7037 \
                --repo netdev --linux ../linux --check
 
 Use gitdm DB to map people to corp::
@@ -109,7 +107,7 @@ See domains with a single addr which are not mapped to corpo::
 
 Spot-check the grouping and parsing::
 
-    ./ml-stat.py --db db.json --email-count 16712 \
+    ./ml-stat.py --db db.json --since bb545da872c8 --until 0109af6d7037 \
                --repo netdev --linux ../linux --interact
 
 Other scripts

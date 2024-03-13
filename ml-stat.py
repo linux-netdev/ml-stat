@@ -396,17 +396,19 @@ def prep_files(file_dir, n):
             continue
         files.add(int(f))
 
+    until = args.until
+
     # Sanity check
     if len(files):
         id_to_check = min(files)
-        git(git_dir, ['checkout', f'master~{id_to_check}'])
+        git(git_dir, ['checkout', f'{until}~{id_to_check}'])
         ret = filecmp.cmp(os.path.join(file_dir, str(id_to_check)), os.path.join(git_dir, 'm'))
         if not ret:
             print(f'Files look stale id: {id_to_check}: {ret}')
             sys.exit(1)
 
     # TODO: go to the previous repo is we run out of messages
-    git(git_dir, ['checkout', '-q', f'master'])
+    git(git_dir, ['checkout', '-q', until])
     for i in range(n):
         if i in files:
             continue
@@ -422,7 +424,7 @@ def prep_files(file_dir, n):
 
         git(git_dir, ['checkout', '-q', f'HEAD~'])
 
-    git(git_dir, ['reset', '--hard', 'master'])
+    git(git_dir, ['reset', '--hard', until])
 
 
 def name_check_sort_heuristics(idents):
@@ -913,6 +915,7 @@ def print_change_set_stat(ps):
 
 def main():
     parser = argparse.ArgumentParser(description='Mailing list stats')
+    parser.add_argument('--until', type=str, default='master', help="SHA1 in the repo to work from")
     parser.add_argument('--linux', type=str, required=True, help="Path to the Linux kernel git tree")
     parser.add_argument('--no-individual', dest='individual', action='store_false', default=True,
                         help="Do not print the stats by individual people")

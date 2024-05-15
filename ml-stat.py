@@ -139,7 +139,14 @@ class EmailMsg(EmailPost):
 
     def get_from_mapped(self, mappings):
         ret = []
-        for addr in self.msg.get_all('from'):
+        from_list = self.msg.get_all('from')
+        for addr in from_list:
+            b4_start = addr.find("via B4 Relay")
+            if b4_start != -1:
+                from_list = self.msg.get_all('X-Original-From')
+                break
+
+        for addr in from_list:
             if addr.find('<') < 0:
                 addr = '<' + addr + '>'
 

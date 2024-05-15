@@ -36,8 +36,9 @@ over time but for now ``git-stat.py`` loads them.
 
 Example use::
 
-    ./git-stat.py --linux ../linux/ \
+    ./git-stat.py --db ./db.json --linux ../linux/ \
         --start-commit 7e68dd7d07a --end-commit 5b7c4cabbb6 \
+	--json-out netdev-6.4.json \
 	--maintainers davem@davemloft.net \
 	              edumazet@google.com \
 		      kuba@kernel.org \
@@ -104,6 +105,22 @@ See domains with a single addr which are not mapped to corpo::
      datamash -t ' ' groupby 1 sum 2 count 2 | \
      awk '{if ($3 == 1) {print $2,$3,$1;}}' | \
      sort -n
+
+See top unampped scorers from Gmail and kernel.org::
+
+   cat netdev-6.6.json | \
+      jq -r '.corporate | with_entries(.value = .value.score.positive)' | \
+      sed -n 's/.*\(<.*@.*>\)": *\(.*\),/\1 \2/p' | \
+      datamash -t ' ' groupby 1 sum 2 count 2 | \
+      awk '{if ($2 >= 20 || $2 <= -20) {print $2,$3,$1;}}' | \
+      sort -n | \
+      grep -E 'kernel|gmail'
+
+Check if anyone escaped B4 Relay remap::
+
+   cat netdev-6.6.json | \
+      jq -r '.individual | with_entries(.value = .value.score.positive)' | \
+      grep "B4 Relay"
 
 Spot-check the grouping and parsing::
 

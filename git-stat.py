@@ -179,10 +179,15 @@ def main():
 
     commits = git(['log', args.start_commit + '..' + args.end_commit, '--no-merges'] + \
                   ['--committer=' + x for x in args.maintainers]).split('\n')
+    commits_ksft = git(['log', args.start_commit + '..' + args.end_commit, '--no-merges'] + \
+                       ['--committer=' + x for x in args.maintainers] + \
+                       ['--', 'tools/testing/selftests/']).split('\n')
 
     result['direct_commits'] = get_commit_cnt(commits)
+    result['direct_test_commits'] = get_commit_cnt(commits_ksft)
     result['reviews'] = get_review_cnt(commits, args.maintainers)
     result['commit_authors'] = get_commit_stats(commits, db['mailmap'])
+    result['test_commit_authors'] = get_commit_stats(commits_ksft, db['mailmap'])
 
     ages_str = {}
     if args.ages:

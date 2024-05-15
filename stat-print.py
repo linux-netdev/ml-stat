@@ -262,6 +262,9 @@ def print_general(ml, key):
     print(f'{key}: messages: {ml["count"]} days: {days} ({round(ml["count"] / days)} msg/day)')
     commits = ml["git"]["direct_commits"]
     print(f'{key}: direct commits: {commits} ({round(commits / days)} commits/day)')
+    if "direct_test_commits" in ml["git"]:
+        test_commits = ml["git"]["direct_test_commits"]
+        print(f'{key}: test commits: {test_commits} ({(test_commits / commits)*100:.4}%)')
     rcnt = role_counts(ml)
     print(f'{key}: people/aliases: {len(ml["individual"])}  {rcnt}')
     reviews = ml["git"]["reviews"]
@@ -321,6 +324,17 @@ def print_change_set_stat(cs_stat):
     print_cs_sub_by(cs_stat, "Accepted, set:", 'm.a')
     print("Review ratio:", reviewed['cnt'] / (reviewed['cnt'] + not_reviewed['cnt']))
     print()
+
+
+def print_test_authors(ml):
+    print("Contributions to selftests:")
+    authors = ml["git"]["test_commit_authors"]
+    top = sorted(authors, key=lambda x:authors[x], reverse=True)
+    i = 0
+    for person in top[:10]:
+        i += 1
+        name = person.split('<')[0].strip()
+        print(f"  {i:2} [{authors[person]:3}] {name}")
 
 
 def main():
@@ -397,6 +411,9 @@ def main():
         print_histograms(args, histograms, histograms_old)
         if mlB.get('change-sets'):
             print_change_set_stat(mlB['change-sets'])
+
+        print_test_authors(mlB)
+
 
 if __name__ == "__main__":
     main()

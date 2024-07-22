@@ -783,16 +783,15 @@ def load_threads(full_misses):
     print('Missed thread grouping (no root):')
     l = []
     for m in misses:
-        l.append(email_str_date(m) + ' ' + m.get('subject') + '\t' + m.get('message-id'))
+        l.append((email_str_date(m), m.get('subject'), m.rid))
     if full_misses:
         l.sort()
     else:
-        l = ['...'] + l[-10:]
+        l = l[-10:]
+        print(' ', '...')
     for line in l:
-        if full_misses:
-            print(' ', line)
-        else:
-            print(f'  {line:.76}')
+        print(line[0], f'{line[1]:.77}', 'https://patch.msgid.link/' + line[2], sep='\n   ')
+    print()
 
     print('Unknown msg type:')
     for mid, thr in threads.items():

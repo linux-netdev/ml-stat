@@ -350,8 +350,10 @@ def refset_add(refs, msg, key):
     ref = msg.get_all(key)
     if not ref:
         return
+    ref = [r.strip() for r in ref]
     if len(ref) == 1 and ref[0].count('<') > 1:
         ref = ref[0].split()
+        ref = [r.strip() for r in ref]
         ref = filter(lambda r: len(r) and r[0] == '<' and r[-1] == '>', ref)
     refs.update(set(ref))
 
@@ -678,7 +680,7 @@ def group_one_msg(ps, msg, stats, force_root=False):
     refset_add(refs, msg, 'references')
     refset_add(refs, msg, 'in-reply-to')
 
-    mid = msg.get('message-id')
+    mid = msg.mid
 
     is_root = not refs or force_root
 
@@ -728,6 +730,10 @@ def load_threads(full_misses):
         with open(f'msg-files/{i}', 'rb') as fp:
             msg = email.message_from_binary_file(fp, policy=default)
 
+        # Attach pre-parsed attrs to the msg object
+        msg.mid = msg.get('message-id').strip()
+        msg.rid = msg.mid[1:-1]
+
         if not dated:
             ps.first_msg = msg
             print(msg.get('date'))
@@ -743,7 +749,7 @@ def load_threads(full_misses):
 
         force_root = subj.startswith('Fw: [Bug')
         if subj.find('PATCH AUTOSEL') != -1 or msg.get('X-stable') == 'review':
-            stable_mids.add(msg.get('message-id'))
+            stable_mids.add(msg.mid)
             force_root |= True
             stats['skip-stable'] += 1
 
@@ -988,8 +994,8 @@ def main():
 
             "first_date": parsed.first_msg.get('date'),
             "last_date": parsed.last_msg.get('date'),
-            "first_msg_id": parsed.first_msg.get('message-id'),
-            "last_msg_id": parsed.last_msg.get('message-id'),
+            "first_msg_id": parsed.first_msg.mid,
+            "last_msg_id": parsed.last_msg.mid,
 
             "change-sets": parsed.cs_stat,
 

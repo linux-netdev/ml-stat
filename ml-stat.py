@@ -409,7 +409,8 @@ def prep_files(file_dir, since, until, offset=0):
         os.mkdir(file_dir)
 
     # Start with the oldest dir that exists
-    git_dir = git_dir_prev = git_dir_idx = -1
+    git_dir = git_dir_idx = -1
+    git_dir_old = None
     for i in reversed(range(9)):
         name = f'{args.repo}-{i}.git'
         if not os.path.isdir(name):
@@ -423,7 +424,8 @@ def prep_files(file_dir, since, until, offset=0):
 
         git_dir_idx = i
         git_dir = name
-        git_dir_old = f'{args.repo}-{i - 1}.git'
+        if i > 0:
+            git_dir_old = f'{args.repo}-{i - 1}.git'
         break
     if git_dir_idx == -1:
         print(f'git dir not found: {args.repo}-$i.git')
@@ -460,7 +462,8 @@ def prep_files(file_dir, since, until, offset=0):
             print(f'Files look stale id: {id_to_check}: {ret}')
             sys.exit(1)
 
-    checkout_files(file_dir, git_dir_old, files, 'origin/master', n_new, n_old + n_new)
+    if n_old:
+        checkout_files(file_dir, git_dir_old, files, 'origin/master', n_new, n_old + n_new)
     checkout_files(file_dir, git_dir, files, until, 0, n_new)
 
     return n_new + n_old

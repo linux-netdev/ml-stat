@@ -275,12 +275,13 @@ def email_str_date(m):
     return f"{dt:%Y-%m-%d}"
 
 
-def git(tree, cmd):
+def git(tree, cmd, silent=None):
     if isinstance(cmd, str):
         cmd = [cmd]
     p = subprocess.run(['/usr/bin/git'] + cmd, cwd=tree, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if p.returncode:
-        print(p.stderr.decode('utf-8'))
+        if not silent:
+            print(p.stderr.decode('utf-8'))
         p.check_returncode()
     return p.stdout.decode('utf-8', errors='ignore')
 
@@ -377,49 +378,11 @@ def print_one(ppl_stat, key, subkey, p):
     print(f"  #{i:2}. [{ppl_stat[p][key][subkey]:3}] {p}")
 
 
-def prep_files(file_dir):
-    # os.listdir
-    # os.path import isfile, join
+def checkout_files(file_dir, git_dir, files, until, start, n):
+    print(f"Preparing files from {git_dir}, id range {start}..{n - 1}")
 
-    if not os.path.isdir(file_dir):
-        os.mkdir(file_dir)
-
-    # Start with the oldest dir that exists
-    git_dir = git_dir_idx = -1
-    for i in reversed(range(9)):
-        name = f'{args.repo}-{i}.git'
-        if os.path.isdir(name):
-            git_dir_idx = i
-            git_dir = name
-            print('Using', name, 'as the main repo')
-            break
-    if git_dir_idx == -1:
-        print(f'git dir not found: {args.repo}-$i.git')
-        sys.exit(1)
-
-    files = set()
-    for f in os.listdir(file_dir):
-        if not os.path.isfile(os.path.join(file_dir, f)):
-            continue
-        if not f.isnumeric():
-            continue
-        files.add(int(f))
-
-    until = args.until
-    n = int(git(git_dir, ['rev-list', '--count', f'{args.since}..{until}']))
-
-    # Sanity check
-    if len(files):
-        id_to_check = min(files)
-        git(git_dir, ['checkout', f'{until}~{id_to_check}'])
-        ret = filecmp.cmp(os.path.join(file_dir, str(id_to_check)), os.path.join(git_dir, 'm'))
-        if not ret:
-            print(f'Files look stale id: {id_to_check}: {ret}')
-            sys.exit(1)
-
-    # TODO: go to the previous repo is we run out of messages
     git(git_dir, ['checkout', '-q', until])
-    for i in range(n):
+    for i in range(start, n):
         if i in files:
             continue
 
@@ -435,7 +398,71 @@ def prep_files(file_dir):
         git(git_dir, ['checkout', '-q', f'HEAD~'])
 
     git(git_dir, ['reset', '--hard', until])
-    return n
+
+
+def prep_files(file_dir, since, until, offset=0):
+    # os.listdir
+    # os.path import isfile, join
+
+    if not os.path.isdir(file_dir):
+        os.mkdir(file_dir)
+
+    # Start with the oldest dir that exists
+    git_dir = git_dir_prev = git_dir_idx = -1
+    for i in reversed(range(9)):
+        name = f'{args.repo}-{i}.git'
+        if not os.path.isdir(name):
+            continue
+
+        # Check if the target rev exists in this repo
+        try:
+            git(name, ['rev-parse', until], silent=True)
+        except subprocess.CalledProcessError:
+            continue
+
+        git_dir_idx = i
+        git_dir = name
+        git_dir_old = f'{args.repo}-{i - 1}.git'
+        break
+    if git_dir_idx == -1:
+        print(f'git dir not found: {args.repo}-$i.git')
+        sys.exit(1)
+
+    files = set()
+    for f in os.listdir(file_dir):
+        if not os.path.isfile(os.path.join(file_dir, f)):
+            continue
+        if not f.isnumeric():
+            continue
+        files.add(int(f))
+
+    try:
+        n_old = 0
+        n_new = int(git(git_dir, ['rev-list', '--count', f'{since}..{until}'], silent=True))
+    except subprocess.CalledProcessError:
+        # Probably spanning different repos, sigh
+        try:
+            git(git_dir_old, ['rev-parse', since])
+
+            n_old = int(git(git_dir_old, ['rev-list', '--count', f'{since}..origin/master']))
+            n_new = int(git(git_dir, ['rev-list', '--count', until])) - 1
+        except subprocess.CalledProcessError:
+            print(f"Can't find the hashes in ML repos")
+            sys.exit(1)
+
+    # Sanity check
+    if len(files):
+        id_to_check = min(files)
+        git(git_dir, ['checkout', f'{until}~{id_to_check}'])
+        ret = filecmp.cmp(os.path.join(file_dir, str(id_to_check)), os.path.join(git_dir, 'm'))
+        if not ret:
+            print(f'Files look stale id: {id_to_check}: {ret}')
+            sys.exit(1)
+
+    checkout_files(file_dir, git_dir_old, files, 'origin/master', n_new, n_old + n_new)
+    checkout_files(file_dir, git_dir, files, until, 0, n_new)
+
+    return n_new + n_old
 
 
 def name_check_sort_heuristics(idents):
@@ -722,7 +749,7 @@ def load_threads(full_misses):
     }
     misses = []
 
-    email_count = prep_files('msg-files')
+    email_count = prep_files('msg-files', args.since, args.until)
 
     dated = False
     stable_mids = set()

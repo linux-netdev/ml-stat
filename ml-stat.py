@@ -262,6 +262,7 @@ def remove_bots(people_dict):
                 'kernel test robot <lkp@intel.com>',
                 '<pr-tracker-bot@kernel.org>',
                 'syzbot <syzbot@syzkaller.appspotmail.com>',
+                '<bot+bpf-ci@kernel.org>',
                 '<patchwork-bot+bluetooth@kernel.org>']:
         people_dict.pop(bot, 0)
 

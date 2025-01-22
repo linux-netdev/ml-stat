@@ -243,6 +243,7 @@ def role_counts(ml):
         'author': 0,
         'commenter': 0,
         'both': 0,
+        'none': 0,
     }
     for name in ml['individual'].keys():
         person = ml['individual'][name]
@@ -252,6 +253,10 @@ def role_counts(ml):
             rc['commenter'] += 1
         elif person['author']['msg']:
             rc['author'] += 1
+
+    for name in ml['git']['commit_authors']:
+        if name not in ml['individual']:
+            rc['none'] += 1
 
     return rc
 

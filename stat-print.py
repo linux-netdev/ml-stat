@@ -266,7 +266,11 @@ def print_general(ml, key):
         test_commits = ml["git"]["direct_test_commits"]
         print(f'{key}: test commits: {test_commits} ({(test_commits / commits)*100:.4}%)')
     rcnt = role_counts(ml)
-    print(f'{key}: people/aliases: {len(ml["individual"])}  {rcnt}')
+    print(f'{key}: people: {len(ml["individual"])}  {rcnt}')
+    rsum = sum(rcnt.values())
+    for k in rcnt:
+        rcnt[k] = round(rcnt[k] / rsum, 2)
+    print(f'{key}: people pct: {rcnt}')
     reviews = ml["git"]["reviews"]
     print(f'{key}: review pct: {reviews["any"]["pct"]}%  x-corp pct: {reviews["x-company"]["pct"]}%')
     print()
@@ -322,7 +326,8 @@ def print_change_set_stat(cs_stat):
     not_reviewed = print_cs_sub_by(cs_stat, "Accepted - reviewed:", '.-a')
     print_cs_sub_by(cs_stat, "Accepted, single:", 's.a')
     print_cs_sub_by(cs_stat, "Accepted, set:", 'm.a')
-    print("Review ratio:", reviewed['cnt'] / (reviewed['cnt'] + not_reviewed['cnt']))
+    ratio = reviewed['cnt'] / (reviewed['cnt'] + not_reviewed['cnt'])
+    print(f"Review ratio: {ratio:.4}")
     print()
 
 
@@ -412,7 +417,8 @@ def main():
         if mlB.get('change-sets'):
             print_change_set_stat(mlB['change-sets'])
 
-        print_test_authors(mlB)
+        if mlB["git"].get("test_commit_authors"):
+            print_test_authors(mlB)
 
 
 if __name__ == "__main__":

@@ -42,7 +42,8 @@ Example use::
 	--maintainers davem@davemloft.net \
 	              edumazet@google.com \
 		      kuba@kernel.org \
-		      pabeni@redhat.com
+		      pabeni@redhat.com \
+		      anthony.l.nguyen@intel.com
 
 Release to release comparisons and printing
 -------------------------------------------

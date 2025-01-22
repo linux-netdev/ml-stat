@@ -150,6 +150,8 @@ class EmailMsg(EmailPost):
             if addr.find('<') < 0:
                 addr = '<' + addr + '>'
 
+            addr = addr.replace('"', "")
+
             for mapping in mappings:
                 for m in mapping:
                     if addr.find(m[0]) >= 0:

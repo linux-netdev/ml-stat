@@ -165,6 +165,8 @@ def main():
                         help="Instead of printing results add them into a JSON file")
     parser.add_argument('--no-ages', dest='ages', action='store_false', default=True,
                         help="Do not print member tenure stats")
+    parser.add_argument('--next-size', type=int, required=True,
+                        help="Number of commits in linux-next")
     global args
     args = parser.parse_args()
 
@@ -183,6 +185,7 @@ def main():
                        ['--committer=' + x for x in args.maintainers] + \
                        ['--', 'tools/testing/selftests/']).split('\n')
 
+    result['next-size'] = args.next_size
     result['direct_commits'] = get_commit_cnt(commits)
     result['direct_test_commits'] = get_commit_cnt(commits_ksft)
     result['reviews'] = get_review_cnt(commits, args.maintainers)

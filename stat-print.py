@@ -274,7 +274,7 @@ def print_general(ml, key):
     print(f'{key}: people: {len(ml["individual"])}  {rcnt}')
     rsum = sum(rcnt.values())
     for k in rcnt:
-        rcnt[k] = round(rcnt[k] / rsum, 2)
+        rcnt[k] = round(rcnt[k] / rsum, 3)
     print(f'{key}: people pct: {rcnt}')
     reviews = ml["git"]["reviews"]
     print(f'{key}: review pct: {reviews["any"]["pct"]}%  x-corp pct: {reviews["x-company"]["pct"]}%')
@@ -282,17 +282,22 @@ def print_general(ml, key):
 
 
 def print_diff(mlA, mlB):
+    a = mlA["git"]["next-size"] / ml_stat_days(mlA)
+    b = mlB["git"]["next-size"] / ml_stat_days(mlB)
+    tree_delta = a / b
+    print(f"Diff: {round((1/tree_delta - 1) * 100, 3):+5.1f}% linux-next size")
+
     a = mlA["count"] / ml_stat_days(mlA)
     b = mlB["count"] / ml_stat_days(mlB)
-    print(f'Diff: {round((b/a - 1) * 100, 3):+.1f}% msg/day')
+    print(f'Diff: {round((b/a - 1) * 100, 3):+5.1f}% ({round((b/a*tree_delta - 1) * 100, 3):+5.1f}%) msg/day')
 
     a = mlA["git"]["direct_commits"] / ml_stat_days(mlA)
     b = mlB["git"]["direct_commits"] / ml_stat_days(mlB)
-    print(f'Diff: {round((b/a - 1) * 100, 3):+.1f}% commits/day')
+    print(f'Diff: {round((b/a - 1) * 100, 3):+5.1f}% ({round((b/a*tree_delta - 1) * 100, 3):+5.1f}%) commits/day')
 
     a = len(mlA["individual"]) / ml_stat_days(mlA)
     b = len(mlB["individual"]) / ml_stat_days(mlB)
-    print(f'Diff: {round((b/a - 1) * 100, 3):+.1f}% people/day')
+    print(f'Diff: {round((b/a - 1) * 100, 3):+5.1f}% ({round((b/a*tree_delta - 1) * 100, 3):+5.1f}%) people/day')
 
     reviewsA = mlA["git"]["reviews"]
     reviewsB = mlB["git"]["reviews"]

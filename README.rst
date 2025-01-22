@@ -34,10 +34,15 @@ git stats
 Some statistics are much quicker to get from git. They may go away
 over time but for now ``git-stat.py`` loads them.
 
+``next-size`` has to be found manually::
+
+  git log --no-merges --oneline v6.13...linux-next/master | wc -l
+
 Example use::
 
     ./git-stat.py --db ./db.json --linux ../linux/ \
         --start-commit 7e68dd7d07a --end-commit 5b7c4cabbb6 \
+	--next-size 1234 \
 	--json-out netdev-6.4.json \
 	--maintainers davem@davemloft.net \
 	              edumazet@google.com \

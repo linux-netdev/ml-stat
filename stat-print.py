@@ -238,6 +238,45 @@ def print_histograms(args, hist_list, hist_list_old):
         print()
 
 
+def dict_sum_int(a, b):
+    for k, v in b.items():
+        if isinstance(v, int):
+            if k == 'max':
+                a[k] = max(a.get(k, 0), v)
+            else:
+                a[k] = a.get(k, 0) + v
+        elif isinstance(v, dict):
+            a[k] = a.get(k, {})
+            dict_sum_int(a[k], v)
+        else:
+            raise Exception("Int-sum of dict, bad key", k, "value", v)
+
+
+def gather_cs_sub_by(cs_stat, key):
+    result = {}
+    for mkey, v in cs_stat.items():
+        if re.match(key, mkey):
+            dict_sum_int(result, v)
+    return result
+
+
+def print_cs_sub_by(cs_stat, caption, key):
+    result = gather_cs_sub_by(cs_stat, key)
+    print(caption, result, 'avg revisions:', result['sum'] / result['cnt'])
+    return result
+
+
+def print_change_set_stat(cs_stat):
+    print("Change sets:")
+    reviewed = print_cs_sub_by(cs_stat, "Accepted + reviewed:", '.ra')
+    not_reviewed = print_cs_sub_by(cs_stat, "Accepted - reviewed:", '.-a')
+    print_cs_sub_by(cs_stat, "Accepted, single:", 's.a')
+    print_cs_sub_by(cs_stat, "Accepted, set:", 'm.a')
+    ratio = reviewed['cnt'] / (reviewed['cnt'] + not_reviewed['cnt'])
+    print(f"Review ratio: {ratio:.4}")
+    print()
+
+
 def role_counts(ml):
     rc = {
         'author': 0,
@@ -278,6 +317,13 @@ def print_general(ml, key):
     print(f'{key}: people pct: {rcnt}')
     reviews = ml["git"]["reviews"]
     print(f'{key}: review pct: {reviews["any"]["pct"]}%  x-corp pct: {reviews["x-company"]["pct"]}%')
+
+    if ml.get('change-sets'):
+        cs_stat = ml['change-sets']
+        s = gather_cs_sub_by(cs_stat, 's.a')
+        m = gather_cs_sub_by(cs_stat, 'm.a')
+        print(f"{key}: avg revisions: single patch: {s['sum'] / s['cnt']:.2f} patch set: {m['sum'] / m['cnt']:.2f}")
+
     print()
 
 
@@ -304,40 +350,20 @@ def print_diff(mlA, mlB):
     print(f'Diff: review pct: {round(reviewsB["any"]["pct"] - reviewsA["any"]["pct"], 3):+.1f}%')
     print(f'      x-corp pct: {round(reviewsB["x-company"]["pct"] - reviewsA["x-company"]["pct"], 3):+.1f}%')
 
-    print()
+    if mlA.get('change-sets') and  mlB.get('change-sets'):
+        a = gather_cs_sub_by(mlA['change-sets'], 's.a')
+        aS = a['sum'] / a['cnt']
+        a = gather_cs_sub_by(mlA['change-sets'], 'm.a')
+        aM = a['sum'] / a['cnt']
 
+        a = gather_cs_sub_by(mlB['change-sets'], 's.a')
+        bS = a['sum'] / a['cnt']
+        a = gather_cs_sub_by(mlB['change-sets'], 'm.a')
+        bM = a['sum'] / a['cnt']
 
-def dict_sum_int(a, b):
-    for k, v in b.items():
-        if isinstance(v, int):
-            if k == 'max':
-                a[k] = max(a.get(k, 0), v)
-            else:
-                a[k] = a.get(k, 0) + v
-        elif isinstance(v, dict):
-            a[k] = a.get(k, {})
-            dict_sum_int(a[k], v)
-        else:
-            raise Exception("Int-sum of dict, bad key", k, "value", v)
+        print(f"Diff: avg revisions: single patch: {round((bS/aS - 1) * 100, 3):+.1f}% " + \
+              f"patch set: {round((bM/aM - 1) * 100, 3):+.1f}%")
 
-
-def print_cs_sub_by(cs_stat, caption, key):
-    result = {}
-    for mkey, v in cs_stat.items():
-        if re.match(key, mkey):
-            dict_sum_int(result, v)
-    print(caption, result, 'avg revisions:', result['sum'] / result['cnt'])
-    return result
-
-
-def print_change_set_stat(cs_stat):
-    print("Change sets:")
-    reviewed = print_cs_sub_by(cs_stat, "Accepted + reviewed:", '.ra')
-    not_reviewed = print_cs_sub_by(cs_stat, "Accepted - reviewed:", '.-a')
-    print_cs_sub_by(cs_stat, "Accepted, single:", 's.a')
-    print_cs_sub_by(cs_stat, "Accepted, set:", 'm.a')
-    ratio = reviewed['cnt'] / (reviewed['cnt'] + not_reviewed['cnt'])
-    print(f"Review ratio: {ratio:.4}")
     print()
 
 

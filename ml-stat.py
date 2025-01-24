@@ -480,6 +480,21 @@ def name_check_sort_heuristics(idents):
             print(f"INFO: target identity set as a subset!")
             return
 
+    # One with comma, one without
+    if len(idents) == 2:
+        comma1st = ',' in idents[0]
+        comma2nd = ',' in idents[1]
+        if comma1st != comma2nd:
+            # Doe, John vs Doe John (comma is better, looks naively removed)
+            # Doe, John vs John Doe (comma-less is better)
+            # (does not matter if one is Jonathan)
+            if idents[0].split()[0].rstrip(',') == idents[1].split()[0].rstrip(','):
+                if comma1st:
+                    idents.reverse()
+            elif comma2nd:
+                    idents.reverse()
+            return
+
     # Sort anything that contains " first
     idents.sort(key=lambda v: -v.find('"'))
 

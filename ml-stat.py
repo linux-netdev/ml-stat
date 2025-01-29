@@ -59,8 +59,15 @@ def getch():
 
 
 class EmailPost:
+    AnyBad = False
+    AnyUnknown = False
+
     def __init__(self, subject):
         self._subject = subject
+        if not EmailPost.AnyBad:
+            EmailPost.AnyBad = self.is_bad()
+        if not EmailPost.AnyUnknown:
+            EmailPost.AnyUnknown = self.is_unknown()
 
     def subject(self):
         return self._subject
@@ -828,28 +835,33 @@ def load_threads(full_misses):
     for mid, grp in ps.email_roots.items():
         threads[mid] = EmailThread(grp)
 
-    print('Missed thread grouping (no root):')
-    l = []
-    for m in misses:
-        l.append((email_str_date(m), m.get('subject'), m.rid))
-    if full_misses:
-        l.sort()
-    else:
-        l = l[-10:]
-        print(' ', '...')
-    for line in l:
-        print(line[0], f'{line[1]:.77}', 'https://patch.msgid.link/' + line[2], sep='\n   ')
-    print()
+    if misses:
+        print('Missed thread grouping (no root):')
+        l = []
+        for m in misses:
+            l.append((email_str_date(m), m.get('subject'), m.rid))
+        if full_misses:
+            l.sort()
+        else:
+            l = l[-10:]
+            print(' ', '...')
+        for line in l:
+            print(line[0], f'{line[1]:.77}', 'https://patch.msgid.link/' + line[2], sep='\n   ')
+        print()
 
-    print('Unknown msg type:')
-    for mid, thr in threads.items():
-        if thr.is_unknown():
-            print('  ' + thr.root_subj())
+    if EmailPost.AnyUnknown:
+        print('Unknown msg type:')
+        for mid, thr in threads.items():
+            if thr.is_unknown():
+                print('  ' + thr.root_subj())
+        print()
 
-    print('Bad msg type:')
-    for mid, thr in threads.items():
-        if thr.is_bad():
-            print('  ' + thr.root_subj())
+    if EmailPost.AnyBad:
+        print('Bad msg type:')
+        for mid, thr in threads.items():
+            if thr.is_bad():
+                print('  ' + thr.root_subj())
+        print()
 
     for thr in threads.values():
         if not thr.is_patch():

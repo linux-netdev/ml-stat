@@ -276,13 +276,13 @@ def remove_bots(people_dict):
         people_dict.pop(bot, 0)
 
 
-# TODO: this is just parsedate_to_datetime from
+def email_datetime(m):
+    mdate = m.get('date')
+    return email.utils.parsedate_to_datetime(mdate)
+
+
 def email_str_date(m):
-    dt = m.get('date')
-    parsed = email.utils.parsedate(dt)
-    timed = time.mktime(parsed)
-    dt = datetime.datetime.fromtimestamp(timed)
-    return f"{dt:%Y-%m-%d}"
+    return str(email_datetime(m).date())
 
 
 def git(tree, cmd, silent=None):

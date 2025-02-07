@@ -83,6 +83,7 @@ class EmailPost:
 
     def is_pr(self):
         return 'pull req' in self._subject
+        return 'pull req' in self._subject or 'pull-req' in self._subject
 
     def is_bugzilla_forward(self):
         return 'Fw: [Bug ' in self._subject

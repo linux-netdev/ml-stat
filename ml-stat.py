@@ -82,14 +82,14 @@ class EmailPost:
         return self._subject[0] == '[' and not self.is_pr() and not self._is_discussion()
 
     def is_pr(self):
-        return self._subject.find('pull req') != -1
+        return 'pull req' in self._subject
 
     def is_bugzilla_forward(self):
-        return self._subject.find('Fw: [Bug ') != -1
+        return 'Fw: [Bug ' in self._subject
 
     def is_discussion(self):
         subj = self._subject
-        return (not self.is_pr() and (subj.find('[') == -1 and subj.find(']') == -1)) or \
+        return (not self.is_pr() and ('[' not in subj and ']'not in subj)) or \
                self._is_discussion()
 
     def is_unknown(self):
@@ -148,20 +148,19 @@ class EmailMsg(EmailPost):
         ret = []
         from_list = self.msg.get_all('from')
         for addr in from_list:
-            b4_start = addr.find("via B4 Relay")
-            if b4_start != -1:
+            if 'via B4 Relay' in addr:
                 from_list = self.msg.get_all('X-Original-From')
                 break
 
         for addr in from_list:
-            if addr.find('<') < 0:
+            if '<' not in addr:
                 addr = '<' + addr + '>'
 
             addr = addr.replace('"', "")
 
             for mapping in mappings:
                 for m in mapping:
-                    if addr.find(m[0]) >= 0:
+                    if m[0] in addr:
                         addr = m[1]
                         break
 
@@ -691,7 +690,7 @@ def get_mail_map(db, corp):
 
     for m in mailmap:
         for c in corpmap:
-            if m[1].find(c[0]) != -1:
+            if c[0] in m[1]:
                 corpmap.append((m[0], c[1],))
                 break
 
@@ -741,7 +740,7 @@ def group_one_msg(ps, msg, stats, force_root=False):
 
     if not is_root:
         for r in refs:
-            if r in refs and r in ps.email_grps:
+            if r in ps.email_grps:
                 grp = ps.email_grps[r]
                 grp['emails'].append(msg)
                 ps.email_grps[mid] = grp
@@ -803,7 +802,7 @@ def load_threads(full_misses):
             continue
 
         force_root = subj.startswith('Fw: [Bug')
-        if subj.find('PATCH AUTOSEL') != -1 or msg.get('X-stable') == 'review':
+        if 'PATCH AUTOSEL' in subj or msg.get('X-stable') == 'review':
             stable_mids.add(msg.mid)
             force_root |= True
             stats['skip-stable'] += 1

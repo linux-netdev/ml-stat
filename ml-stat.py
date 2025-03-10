@@ -82,7 +82,6 @@ class EmailPost:
         return self._subject[0] == '[' and not self.is_pr() and not self._is_discussion()
 
     def is_pr(self):
-        return 'pull req' in self._subject
         return 'pull req' in self._subject or 'pull-req' in self._subject
 
     def is_bugzilla_forward(self):

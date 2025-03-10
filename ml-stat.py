@@ -78,10 +78,15 @@ class EmailPost:
                 return True
         return False
 
+    def is_reply(self):
+        return self._subject[:4].lower() == 're: '
+
     def is_patch(self):
         return self._subject[0] == '[' and not self.is_pr() and not self._is_discussion()
 
     def is_pr(self):
+        if self.is_reply():
+            return False
         return 'pull req' in self._subject or 'pull-req' in self._subject
 
     def is_bugzilla_forward(self):
@@ -114,8 +119,7 @@ class EmailMsg(EmailPost):
         if self._body_processed is not None:
             return
         self._body_processed = True
-        # TODO: also match RE?
-        if not self.subject().startswith('Re: '):
+        if not self.is_reply():
             return
 
         body = self.msg.get_body(preferencelist=('plain',))

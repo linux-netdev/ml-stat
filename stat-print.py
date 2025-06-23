@@ -367,15 +367,16 @@ def print_diff(mlA, mlB):
     print()
 
 
-def print_test_authors(ml):
+def print_test_authors(ml, top_extra):
     print("Contributions to selftests:")
     authors = ml["git"]["test_commit_authors"]
     top = sorted(authors, key=lambda x:authors[x], reverse=True)
     i = 0
-    for person in top[:10]:
+    for person in top[:10 + top_extra]:
         i += 1
         name = person.split('<')[0].strip()
         print(f"  {i:2} [{authors[person]:3}] {name}")
+    print()
 
 
 def main():
@@ -437,6 +438,9 @@ def main():
         print_general(mlB, 'Curr')
         print_diff(mlA, mlB)
 
+        if mlB["git"].get("test_commit_authors"):
+            print_test_authors(mlB, args.top_extra)
+
         print_direct(args, mlA, mlB, 'individual', args.top_extra)
         print()
         print_direct(args, mlA, mlB, 'corporate', args.top_extra)
@@ -452,9 +456,6 @@ def main():
         print_histograms(args, histograms, histograms_old)
         if mlB.get('change-sets'):
             print_change_set_stat(mlB['change-sets'])
-
-        if mlB["git"].get("test_commit_authors"):
-            print_test_authors(mlB)
 
 
 if __name__ == "__main__":

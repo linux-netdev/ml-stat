@@ -367,15 +367,26 @@ def print_diff(mlA, mlB):
     print()
 
 
-def print_test_authors(ml, top_extra):
+def print_test_authors(mlA, ml, top_extra):
+    now_ppl = len( ml["git"]["test_commit_authors"])
+    was_ppl = len(mlA["git"]["test_commit_authors"])
+    print("Contributions to selftests: total individuals:",
+          now_ppl, f"(was {was_ppl}, {100 * (now_ppl - was_ppl) / was_ppl:+.2f}%)")
+
     print("Contributions to selftests:")
     authors = ml["git"]["test_commit_authors"]
     top = sorted(authors, key=lambda x:authors[x], reverse=True)
     i = 0
-    for person in top[:10 + top_extra]:
+    last = 0
+    for person in top:
         i += 1
         name = person.split('<')[0].strip()
-        print(f"  {i:2} [{authors[person]:3}] {name}")
+        score = authors[person]
+        # Make sure we print all entries with the score of the last position
+        if i > 10 + top_extra and score != last:
+            break
+        print(f"  {i:2} [{score:3}] {name}")
+        last = score
     print()
 
 
@@ -439,7 +450,7 @@ def main():
         print_diff(mlA, mlB)
 
         if mlB["git"].get("test_commit_authors"):
-            print_test_authors(mlB, args.top_extra)
+            print_test_authors(mlA, mlB, args.top_extra)
 
         print_direct(args, mlA, mlB, 'individual', args.top_extra)
         print()

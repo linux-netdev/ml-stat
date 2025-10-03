@@ -23,7 +23,7 @@ for the previous release), ``--until`` is the last message to use
 Example use::
 
   ./ml-stat.py --db ./db.json --since bb545da872c8 --until 0109af6d7037 \
-		--repo netdev --linux ../linux --json-out netdev-6.4.json
+		--repo netdev --linux ../linux --json-out out-stats.json
 
 Before generating the stats it's recommended to run the self checks,
 to make sure that the email mailmap and parsing are okay.
@@ -43,7 +43,7 @@ Example use::
     ./git-stat.py --db ./db.json --linux ../linux/ \
         --start-commit 7e68dd7d07a --end-commit 5b7c4cabbb6 \
 	--next-size 1234 \
-	--json-out netdev-6.4.json \
+	--json-out out-stats.json \
 	--maintainers davem@davemloft.net \
 	              edumazet@google.com \
 		      kuba@kernel.org \
@@ -89,12 +89,12 @@ Basic self-check::
 
 Use gitdm DB to map people to corp::
 
-  ./corp-gitdm-resolve.py --results netdev-6.6.json \
+  ./corp-gitdm-resolve.py --results out-stats.json \
                           --gitdm ../../gitdm-cncf/src/alldevs.txt
 
 See domains with more than one addr which are not mapped to corpo::
 
-   cat netdev-6.6.json | \
+   cat out-stats.json | \
      jq -r '.corporate | with_entries(.value = .value.score.positive)' | \
      sed -n 's/.*@\(.*\)>": -*\(.*\),/\1 \2/p' | \
      sort | \
@@ -104,7 +104,7 @@ See domains with more than one addr which are not mapped to corpo::
 
 See domains with a single addr which are not mapped to corpo::
 
-   cat netdev-6.6.json | \
+   cat out-stats.json | \
      jq -r '.corporate | with_entries(.value = .value.score.positive)' | \
      sed -n 's/.*@\(.*\)>": -*\(.*\),/\1 \2/p' | \
      sort | \
@@ -114,7 +114,7 @@ See domains with a single addr which are not mapped to corpo::
 
 See top unampped scorers from Gmail and kernel.org::
 
-   cat netdev-6.6.json | \
+   cat out-stats.json | \
       jq -r '.corporate | with_entries(.value = .value.score.positive)' | \
       sed -n 's/.*\(<.*@.*>\)": *\(.*\),/\1 \2/p' | \
       datamash -t ' ' groupby 1 sum 2 count 2 | \
@@ -124,7 +124,7 @@ See top unampped scorers from Gmail and kernel.org::
 
 Check if anyone escaped B4 Relay remap::
 
-   cat netdev-6.6.json | \
+   cat out-stats.json | \
       jq -r '.individual | with_entries(.value = .value.score.positive)' | \
       grep "B4 Relay"
 

@@ -22,8 +22,8 @@ for the previous release), ``--until`` is the last message to use
 
 Example use::
 
-  ./ml-stat.py --db ./db.json --since bb545da872c8 --until 0109af6d7037 \
-		--repo netdev --linux ../linux --json-out out-stats.json
+  ./ml-stat.py --db $DB --since bb545da872c8 --until 0109af6d7037 \
+		--repo netdev --linux $LINUX --json-out out-stats.json
 
 Before generating the stats it's recommended to run the self checks,
 to make sure that the email mailmap and parsing are okay.
@@ -40,15 +40,17 @@ over time but for now ``git-stat.py`` loads them.
 
 Example use::
 
-    ./git-stat.py --db ./db.json --linux ../linux/ \
+    ./git-stat.py --db $DB --linux $LINUX \
         --start-commit 7e68dd7d07a --end-commit 5b7c4cabbb6 \
-	--next-size 1234 \
+	--next-size $NEXT_SIZE \
 	--json-out out-stats.json \
 	--maintainers davem@davemloft.net \
 	              edumazet@google.com \
 		      kuba@kernel.org \
 		      pabeni@redhat.com \
-		      anthony.l.nguyen@intel.com
+		      anthony.l.nguyen@intel.com \
+		      antonio@openvpn.net \
+		      sven@narfation.org
 
 Release to release comparisons and printing
 -------------------------------------------
@@ -118,7 +120,7 @@ See top unampped scorers from Gmail and kernel.org::
       jq -r '.corporate | with_entries(.value = .value.score.positive)' | \
       sed -n 's/.*\(<.*@.*>\)": *\(.*\),/\1 \2/p' | \
       datamash -t ' ' groupby 1 sum 2 count 2 | \
-      awk '{if ($2 >= 20 || $2 <= -20) {print $2,$3,$1;}}' | \
+      awk '{if ($2 >= 40 || $2 <= -40) {print $2,$3,$1;}}' | \
       sort -n | \
       grep -E 'kernel|gmail'
 

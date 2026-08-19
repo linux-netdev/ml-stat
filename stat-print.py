@@ -80,6 +80,103 @@ def print_direct(args, mlA, mlB, key, top_extra, filter_fn=None):
         print()
 
 
+def rank_move(ppl_prev, person, i, n):
+    if person not in ppl_prev:
+        return '***'
+    prev_pos = ppl_prev.index(person) + 1
+    if prev_pos == i:
+        return '   '
+    if prev_pos - i <= n * 2:
+        return f'{prev_pos - i:+d}'
+    # Treat people below 2 * n as if they weren't there
+    return '***'
+
+
+def print_columns(left, right):
+    # The two columns use different cutoffs, so they can differ in length
+    for i in range(max(len(left), len(right))):
+        l = left[i] if i < len(left) else ''
+        r = right[i] if i < len(right) else ''
+        print(f'{l:36} {r:36}')
+    print()
+
+
+def posting_ranking(ppl_stat, min_commits, best):
+    ranking = []
+    for person, stat in ppl_stat.items():
+        commits = stat['author'].get('commits', 0)
+        if commits < max(min_commits, 1):
+            continue
+        ranking.append((stat['author']['postings'] / commits, person))
+    # Break ties by name, otherwise the order of people with the same
+    # average would wander between releases and show up as movement
+    ranking.sort(key=lambda entry: (entry[0], entry[1]), reverse=not best)
+    return ranking
+
+
+def get_posting_top(ppl_stat, n, min_commits, best):
+    ranking = posting_ranking(ppl_stat, min_commits, best)[:n]
+
+    direction = 'Lowest' if best else 'Highest'
+    lines = [f'{direction} postings/commit (min {min_commits}):']
+    # Companies rack up a lot more commits than people do
+    width = max([len(str(ppl_stat[p]['author']['commits'])) for _, p in ranking]
+                + [2])
+    for i, (average, p) in enumerate(ranking, 1):
+        commits = ppl_stat[p]['author']['commits']
+        lines.append(f"  {i:2} [{commits:{width}}@{average:5.2f}]"
+                     f" {p.split(' <')[0]}")
+
+    return lines
+
+
+def print_posting_ranking(args, mlB, key, min_best, min_worst):
+    n = 15 + args.top_extra
+    left = get_posting_top(mlB[key], n, min_best, best=True)
+    right = get_posting_top(mlB[key], n, min_worst, best=False)
+    if len(left) == 1 and len(right) == 1:
+        return
+    print_columns(left, right)
+
+
+def no_commit_ranking(ppl_stat, min_postings):
+    """Posted, but not one single patch of it made it into the tree"""
+    ranking = []
+    for person, stat in ppl_stat.items():
+        author = stat['author']
+        if author.get('commits', 0) or author.get('postings', 0) < min_postings:
+            continue
+        ranking.append((author['postings'], person))
+    ranking.sort(key=lambda entry: (-entry[0], entry[1]))
+    return ranking
+
+
+def get_no_commit_top(prev_stat, ppl_stat, n, min_postings, caption):
+    ppl_prev = [person for _, person in no_commit_ranking(prev_stat, min_postings)]
+    ranking = no_commit_ranking(ppl_stat, min_postings)
+
+    lines = [f'{caption} (min {min_postings}):']
+    for i, (postings, p) in enumerate(ranking[:n], 1):
+        move = rank_move(ppl_prev, p, i, n)
+        lines.append(f"  {i:2} ({move:>3}) [{postings:4}] {p.split(' <')[0]}")
+
+    return lines
+
+
+def print_no_commit_ranking(args, mlA, mlB):
+    # Kept out of the ranking above, no commits means no ratio to rank on
+    n = 15 + args.top_extra
+    left = get_no_commit_top(mlA['individual'], mlB['individual'], n,
+                             args.no_commit_min_postings,
+                             'Nothing merged, people')
+    right = get_no_commit_top(mlA['corporate'], mlB['corporate'], n,
+                              args.no_commit_corp_min_postings,
+                              'Nothing merged, companies')
+    if len(left) == 1 and len(right) == 1:
+        return
+    print_columns(left, right)
+
+
 def print_author_balance(mlB, key, top_extra):
     ppl_stat = mlB[key]
     div = ml_stat_weeks(mlB)
@@ -266,8 +363,19 @@ def print_cs_sub_by(cs_stat, caption, key):
     return result
 
 
-def print_change_set_stat(cs_stat):
+def print_change_set_stat(mlA, mlB):
+    cs_stat = mlB['change-sets']
+
     print("Change sets:")
+    acc = mlB.get('change-sets-accepted')
+    prev = mlA.get('change-sets-accepted')
+    if acc:
+        d_acc = d_not = ''
+        if prev:
+            d_acc = f" ({acc['accepted_pct'] - prev['accepted_pct']:+.2f}%)"
+            d_not = f" ({acc['not_accepted_pct'] - prev['not_accepted_pct']:+.2f}%)"
+        print(f"Accepted:     {acc['accepted']:5} ({acc['accepted_pct']:.2f}%){d_acc}")
+        print(f"Not accepted: {acc['not_accepted']:5} ({acc['not_accepted_pct']:.2f}%){d_not}")
     reviewed = print_cs_sub_by(cs_stat, "Accepted + reviewed:", '.ra')
     not_reviewed = print_cs_sub_by(cs_stat, "Accepted - reviewed:", '.-a')
     print_cs_sub_by(cs_stat, "Accepted, single:", 's.a')
@@ -323,6 +431,17 @@ def print_general(ml, key):
         s = gather_cs_sub_by(cs_stat, 's.a')
         m = gather_cs_sub_by(cs_stat, 'm.a')
         print(f"{key}: avg revisions: single patch: {s['sum'] / s['cnt']:.2f} patch set: {m['sum'] / m['cnt']:.2f}")
+
+    if ml.get('posting-efficiency'):
+        pe = ml['posting-efficiency']
+        # The merged-only counts came later, older results don't have them
+        merged = pe.get('per_commit_merged')
+        merged = f" (merged postings only: {merged:.2f})" if merged else ''
+        print(f"{key}: postings per merged commit: {pe['per_commit']:.2f}{merged}")
+        merged = pe.get('postings_merged')
+        merged = f" merged: {merged}" if merged else ''
+        print(f"{key}: postings: {pe['postings']}{merged}"
+              f" commits: {pe['commits']}")
 
     print()
 
@@ -397,6 +516,18 @@ def main():
                         help="Group left column by change sets (cs) or threads (thr)")
     parser.add_argument('--top-extra', type=int, required=False, default=0,
                         help="How many extra entries to add to the top n")
+    parser.add_argument('--posting-best-min-commits', type=int, default=5,
+                        help="Min merged commits for the lowest postings/commit ranking")
+    parser.add_argument('--posting-worst-min-commits', type=int, default=5,
+                        help="Min merged commits for the highest postings/commit ranking")
+    parser.add_argument('--posting-corp-best-min-commits', type=int, default=10,
+                        help="As above, for the company ranking")
+    parser.add_argument('--posting-corp-worst-min-commits', type=int, default=10,
+                        help="As above, for the company ranking")
+    parser.add_argument('--no-commit-min-postings', type=int, default=30,
+                        help="Min postings to list someone who got nothing merged")
+    parser.add_argument('--no-commit-corp-min-postings', type=int, default=30,
+                        help="As above, for the company ranking")
     parser.add_argument('--filter-corp', type=str, default=None,
                         help="Show people only from a selected company")
     parser.add_argument('--filter-one', type=str)
@@ -465,8 +596,15 @@ def main():
                       age_histogram_ml(mlB, 'author', args),
                       age_histogram_commits(mlB, args)]
         print_histograms(args, histograms, histograms_old)
+        print_posting_ranking(args, mlB, 'individual',
+                              args.posting_best_min_commits,
+                              args.posting_worst_min_commits)
+        print_posting_ranking(args, mlB, 'corporate',
+                              args.posting_corp_best_min_commits,
+                              args.posting_corp_worst_min_commits)
+        print_no_commit_ranking(args, mlA, mlB)
         if mlB.get('change-sets'):
-            print_change_set_stat(mlB['change-sets'])
+            print_change_set_stat(mlA, mlB)
 
 
 if __name__ == "__main__":

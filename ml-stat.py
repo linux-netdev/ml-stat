@@ -32,6 +32,7 @@ class ParsingState:
         self.threads = None  # set by parser
         self.change_sets = dict()
         self.cs_stat = None  # set by parser, change set stats
+        self.cs_accept = None  # set by parser, how many change sets landed
 
         # These will be replaced by EmailMsg() instances
         self.first_msg = dict()
@@ -62,6 +63,8 @@ class EmailPost:
     AnyBad = False
     AnyUnknown = False
 
+    version_re = re.compile(r'\bv(\d+)\b', re.IGNORECASE)
+
     def __init__(self, subject):
         self._subject = subject
         if not EmailPost.AnyBad:
@@ -81,13 +84,24 @@ class EmailPost:
     def is_reply(self):
         return self._subject[:4].lower() == 're: '
 
+    def version(self):
+        # Revision number from the tag, note that the first posting is
+        # normally not tagged, so no tag means v1.
+        subj = self._subject[4:] if self.is_reply() else self._subject
+        idx = subj.find(']')
+        if not subj.startswith('[') or idx == -1:
+            return None
+        m = EmailPost.version_re.search(subj[:idx])
+        return int(m.group(1)) if m else 1
+
     def is_patch(self):
         return self._subject[0] == '[' and not self.is_pr() and not self._is_discussion()
 
     def is_pr(self):
         if self.is_reply():
             return False
-        return 'pull req' in self._subject or 'pull-req' in self._subject
+        return 'pull req' in self._subject or 'pull-req' in self._subject or \
+               '[GIT PULL]' in self._subject.upper()
 
     def is_bugzilla_forward(self):
         return 'Fw: [Bug ' in self._subject
@@ -114,6 +128,7 @@ class EmailMsg(EmailPost):
         self._review = False
         self._accept = None
         self._pw_cmd = False
+        self._pw_accept = False
 
     def _process_body(self):
         if self._body_processed is not None:
@@ -137,6 +152,15 @@ class EmailMsg(EmailPost):
             if l.startswith('pw-bot:'):
                 self._pw_cmd = True
 
+        # We need the argument to tell an accept from a rejection, so unlike
+        # the scan above this one must go line by line. Requiring the line to
+        # start with the command also keeps us from picking up quoted text.
+        for l in body_str.splitlines():
+            if not l.lower().startswith('pw-bot:'):
+                continue
+            if l[len('pw-bot:'):].strip().lower().startswith('accept'):
+                self._pw_accept = True
+
     def is_review_tag(self):
         self._process_body()
         return self._review
@@ -150,6 +174,14 @@ class EmailMsg(EmailPost):
     def is_pwbot_command(self):
         self._process_body()
         return self._pw_cmd
+
+    def is_accept_command(self):
+        # Patches are occasionally accepted by hand, with a "pw-bot: accept"
+        self._process_body()
+        return self._pw_accept
+
+    def is_accepted(self):
+        return self.is_pwbot_accept() or self.is_accept_command()
 
     def get(self, key):
         return self.msg.get(key)
@@ -194,7 +226,11 @@ class EmailThread(EmailPost):
         self.root_msg = None
 
         self.has_review_tags = False
-        self.has_pwbot_accept = False
+        # Version of the posting which got applied, None if it didn't
+        self.accepted_version = None
+        # All revisions posted in this thread, normally just one, but people
+        # do sometimes send the next revision in-reply-to the previous one
+        self.versions = set()
 
         is_patch = self.is_patch()
 
@@ -204,10 +240,18 @@ class EmailThread(EmailPost):
                 self.root_msg = emsg
             self.msgs.append(emsg)
 
-            if is_patch and not self.has_review_tags:
+            if not is_patch:
+                continue
+
+            if not emsg.is_reply():
+                ver = emsg.version()
+                if ver:
+                    self.versions.add(ver)
+            if not self.has_review_tags:
                 self.has_review_tags |= emsg.is_review_tag()
-            if is_patch and not self.has_pwbot_accept:
-                self.has_pwbot_accept |= emsg.is_pwbot_accept()
+            if self.accepted_version is None and emsg.is_accepted():
+                # The accept is a reply, so it quotes the version it applied
+                self.accepted_version = emsg.version() or self.version() or 1
 
     def root(self):
         return self.grp['root']
@@ -267,17 +311,43 @@ class EmailThread(EmailPost):
 class ChangeSet:
     def __init__(self, thr):
         self.threads = []
-        self.has_pwbot_accept = False
         self.has_review_tags = False
+        self.accepted_version = None
+        self.accepted_thread = None
+        self.versions = set()
 
         self.add_thread(thr)
 
     def add_thread(self, thr):
         self.threads.append(thr)
+        self.versions |= thr.versions
         if not self.has_review_tags:
             self.has_review_tags |= thr.has_review_tags
-        if not self.has_pwbot_accept:
-            self.has_pwbot_accept |= thr.has_pwbot_accept
+        # Series do occasionally get applied in parts, the last accept wins
+        if thr.accepted_version is not None and \
+           thr.accepted_version >= (self.accepted_version or 0):
+            self.accepted_version = thr.accepted_version
+            self.accepted_thread = thr
+
+    def revisions(self):
+        # Count postings by version rather than by what we have seen.
+        # v1 is not tagged, so the version doubles as the posting count,
+        # and it survives the series starting before the window or the
+        # subject getting reworded between revisions.
+        if self.accepted_version:
+            return self.accepted_version
+        if self.versions:
+            return max(self.versions)
+        return len(self.threads)
+
+    def truncated(self):
+        # We never saw the first posting, so this change set reaches back
+        # before the window (or someone reworded the subject mid-flight)
+        return not self.versions or min(self.versions) > 1
+
+    def final_thread(self):
+        # The posting which got applied, or the last one we have seen
+        return self.accepted_thread or self.threads[-1]
 
     def participants(self, mapping):
         people = dict()
@@ -925,28 +995,43 @@ def load_threads(full_misses):
     cs_stat = {}
     zero_len_cs = []
     for i in itertools.product(['s', 'm'], ['r', '-'], ['a', '-']):
-        cs_stat[''.join(i)] = {'cnt': 0, 'max': 0, 'sum': 0, 'hist': {}}
+        cs_stat[''.join(i)] = {'cnt': 0, 'max': 0, 'sum': 0, 'hist': {}, 'trunc': 0}
     for cs in ps.change_sets.values():
-        if cs.threads[0].patch_count() == 0:
+        # Classify by what got applied, the first posting we have seen
+        # is fairly arbitrary if the change set predates the window
+        final = cs.final_thread()
+        if final.patch_count() == 0:
             zero_len_cs.append(cs)
             continue
 
-        mkey = ('m' if cs.threads[0].patch_count() > 1 else 's') + \
+        mkey = ('m' if final.patch_count() > 1 else 's') + \
                ('r' if cs.has_review_tags else '-') + \
-               ('a' if cs.has_pwbot_accept else '-')
+               ('a' if cs.accepted_version else '-')
 
         cs_stat[mkey]['cnt'] += 1
-        post_cnt = len(cs.threads)
+        post_cnt = cs.revisions()
         cs_stat[mkey]['sum'] += post_cnt
         cs_stat[mkey]['max'] = max(cs_stat[mkey]['max'], post_cnt)
+        cs_stat[mkey]['trunc'] += cs.truncated()
 
         while len(cs_stat[mkey]['hist']) < post_cnt:
             cs_stat[mkey]['hist'][len(cs_stat[mkey]['hist']) + 1] = 0
         cs_stat[mkey]['hist'][post_cnt] += 1
     if zero_len_cs:
-        subjects = [cs.threads[0].subject() for cs in zero_len_cs]
+        subjects = [cs.final_thread().subject() for cs in zero_len_cs]
         print('Zero-length change sets:\n ', '\n  '.join(subjects))
     ps.cs_stat = cs_stat
+
+    # Derive from the buckets so the two can't drift apart
+    total = sum(v['cnt'] for v in cs_stat.values())
+    acc = sum(v['cnt'] for mkey, v in cs_stat.items() if mkey[2] == 'a')
+    ps.cs_accept = {
+        'total': total,
+        'accepted': acc,
+        'accepted_pct': round(100 * acc / total, 2) if total else 0,
+        'not_accepted': total - acc,
+        'not_accepted_pct': round(100 * (total - acc) / total, 2) if total else 0,
+    }
     print()
 
     print('Parsing done:')
@@ -1042,8 +1127,10 @@ def calc_ppl_stat(args, ps, db, corp):
 
 
 def print_change_set_stat(ps):
-    print("Change sets (m/s: patch vs series; r/-: review tag on list; a/-: pw-bot accept):")
+    print("Change sets (m/s: patch vs series; r/-: review tag on list; a/-: accepted):")
     for mkey, v in ps.cs_stat.items():
+        if not v['cnt']:
+            continue
         print('  ', mkey, v, 'avg revisions:', v['sum'] / v['cnt'])
     print()
 
@@ -1118,6 +1205,7 @@ def main():
             "last_msg_id": parsed.last_msg.mid,
 
             "change-sets": parsed.cs_stat,
+            "change-sets-accepted": parsed.cs_accept,
 
             "ages": ages_str,
             "individual": ind_out,

@@ -52,12 +52,25 @@ Example use::
 		      antonio@openvpn.net \
 		      sven@narfation.org
 
+posting efficiency
+------------------
+
+``posting-stat.py`` counts patch postings per merged commit. Run it
+after ``ml-stat.py`` and from the same directory, it reuses the
+``msg-files`` cache. Search linux-next, and fetch it first::
+
+  git -C $LINUX fetch linux-next
+
+  ./posting-stat.py --results out-stats.json --db $DB \
+		--linux $LINUX --tree-ref linux-next/master
+
 Release to release comparisons and printing
 -------------------------------------------
 
-``ml-stat.py`` and ``git-stat.py`` can generate a full dump of
-all statistics. The scripts update the JSON file if one already
-exists (adding under their own keys, the outputs should not clash).
+``ml-stat.py``, ``git-stat.py`` and ``posting-stat.py`` can generate
+a full dump of all statistics. The scripts update the JSON file if one
+already exists (adding under their own keys, the outputs should not
+clash).
 
 A separate script - ``stat-print.py`` can ingest two such
 JSON files and pretty print the statistics of the second file

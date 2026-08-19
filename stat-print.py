@@ -328,8 +328,8 @@ def print_general(ml, key):
 
 
 def print_diff(mlA, mlB):
-    a = mlA["git"]["next-size"] / ml_stat_days(mlA)
-    b = mlB["git"]["next-size"] / ml_stat_days(mlB)
+    a = mlA["git"].get("next-size", 1) / ml_stat_days(mlA)
+    b = mlB["git"].get("next-size", 1) / ml_stat_days(mlB)
     tree_delta = a / b
     print(f"Diff: {round((1/tree_delta - 1) * 100, 3):+5.1f}% linux-next size")
 

@@ -382,7 +382,11 @@ def remove_bots(people_dict):
 
 def email_datetime(m):
     mdate = m.get('date')
-    return email.utils.parsedate_to_datetime(mdate)
+    dt = email.utils.parsedate_to_datetime(mdate)
+    # "-0000" or missing zone gives a naive datetime, RFC 5322 says it's UTC
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    return dt
 
 
 def email_str_date(m):

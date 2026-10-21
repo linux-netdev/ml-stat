@@ -376,7 +376,10 @@ def remove_bots(people_dict):
                 '<pr-tracker-bot@kernel.org>',
                 'syzbot <syzbot@syzkaller.appspotmail.com>',
                 '<bot+bpf-ci@kernel.org>',
-                '<patchwork-bot+bluetooth@kernel.org>']:
+                '<patchwork-bot+bluetooth@kernel.org>',
+                '<netdev-bot+sashiko@kernel.org>',
+                '<netdev-bot+sinfo@kernel.org>',
+                '<sashiko-bot@kernel.org>']:
         people_dict.pop(bot, 0)
 
 
@@ -599,6 +602,31 @@ def prep_files(file_dir, since, until, offset=0):
     checkout_files(file_dir, git_dir, files, until, 0, n_new)
 
     return n_new + n_old
+
+
+def load_extra_msgs(repo, since, until):
+    msgs = []
+    for i in range(9):
+        git_dir = f'{repo}-{i}.git'
+        if not os.path.isdir(git_dir):
+            continue
+
+        # Commit dates in the archives are not monotonic, plain --since
+        # would stop the walk at the first commit older than the window
+        hashes = git(git_dir, ['log', '--reverse', '--format=%H',
+                               f'--since-as-filter={since.isoformat()}',
+                               f'--until={until.isoformat()}', 'origin/master'])
+        for h in hashes.split():
+            p = subprocess.run(['/usr/bin/git', 'show', f'{h}:m'], cwd=git_dir,
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            # No 'm' to read, e.g. a removal commit, which has 'd' instead
+            if p.returncode:
+                continue
+            msgs.append(email.message_from_bytes(p.stdout, policy=default))
+
+    if not msgs:
+        print(f'No messages from {repo} in the time window')
+    return msgs
 
 
 def name_check_sort_heuristics(idents):
@@ -887,6 +915,22 @@ def group_one_msg(ps, msg, stats, force_root=False):
     return False
 
 
+def add_one_msg(ps, msg, stats, stable_mids, misses):
+    subj = msg.get('subject')
+    if not subj:
+        stats['skip'] += 1
+        return
+
+    force_root = subj.startswith('Fw: [Bug')
+    if 'PATCH AUTOSEL' in subj or msg.get('X-stable') == 'review':
+        stable_mids.add(msg.mid)
+        force_root |= True
+        stats['skip-stable'] += 1
+
+    if not group_one_msg(ps, msg, stats, force_root=force_root):
+        misses.append(msg)
+
+
 def load_threads(full_misses):
     ps = ParsingState()
 
@@ -904,6 +948,7 @@ def load_threads(full_misses):
 
     dated = False
     stable_mids = set()
+    seen_mids = set()
     for i in reversed(range(email_count)):
         with open(f'msg-files/{i}', 'rb') as fp:
             msg = email.message_from_binary_file(fp, policy=default)
@@ -920,21 +965,26 @@ def load_threads(full_misses):
         if (email_count - i) % 100 == 0 or i == 0:
             print(email_count - i, end='\r')
 
-        subj = msg.get('subject')
-        if not subj:
-            stats['skip'] += 1
-            continue
-
-        force_root = subj.startswith('Fw: [Bug')
-        if 'PATCH AUTOSEL' in subj or msg.get('X-stable') == 'review':
-            stable_mids.add(msg.mid)
-            force_root |= True
-            stats['skip-stable'] += 1
-
-        if not group_one_msg(ps, msg, stats, force_root=force_root):
-            misses.append(msg)
+        seen_mids.add(msg.mid)
+        add_one_msg(ps, msg, stats, stable_mids, misses)
     if dated:
         ps.last_msg = msg
+
+    # Subsystems like CAN review on their own list and mostly send pull
+    # requests to netdev. Count those lists too, over the same time window.
+    # The messages are not in msg-files, so they stay out of email_count.
+    for repo in args.extra_repo:
+        print(f'Adding messages from {repo}')
+        for msg in load_extra_msgs(repo, email_datetime(ps.first_msg),
+                                   email_datetime(ps.last_msg)):
+            msg.mid = msg.get('message-id').strip()
+            msg.rid = msg.mid[1:-1]
+
+            # Cross-posted, already counted
+            if msg.mid in seen_mids:
+                continue
+            seen_mids.add(msg.mid)
+            add_one_msg(ps, msg, stats, stable_mids, misses)
 
     # Re-try misses, apparently git-send-email sends out of order
     n_misses = 0
@@ -1155,6 +1205,9 @@ def main():
     parser.add_argument('--db', type=str, required=True)
     parser.add_argument('--repo', dest='repo', default='netdev',
                         help="Name of the lore archive (without the number and .git suffix)")
+    parser.add_argument('--extra-repo', dest='extra_repo', action='append', default=[],
+                        help="Name of another lore archive to count (can be repeated). " +
+                        "Messages are taken from the same time window as --repo.")
     parser.add_argument('--json-out', dest='json_out', default='',
                         help="Instead of printing results dump them into a JSON file")
     # Development options
@@ -1168,6 +1221,10 @@ def main():
                         help="How many extra entries to add to the top n")
     global args
     args = parser.parse_args()
+
+    for repo in args.extra_repo:
+        if not any(os.path.isdir(f'{repo}-{i}.git') for i in range(9)):
+            parser.error(f'git dir not found: {repo}-$i.git')
 
     if args.json_out and not (args.individual and args.corp and args.ages):
         parser.error("--json-out requires both crop and individual stats")

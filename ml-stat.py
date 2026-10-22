@@ -24,7 +24,7 @@ from email.utils import parsedate_to_datetime
 
 args = None
 
-# All automated senders, for the share of list traffic which comes from bots
+# All automated senders, kept out of the people stats and counted separately
 BOT_ADDR_RE = re.compile(r'^(patchwork-bot\+[^@]*@kernel\.org|'
                          r'netdev-bot\+[^@]*@kernel\.org|'
                          r'bot\+bpf-ci@kernel\.org|'
@@ -132,6 +132,7 @@ class EmailMsg(EmailPost):
         super().__init__(msg.get('subject'))
 
         self.msg = msg
+        self.bot = is_bot(msg)
 
         self._body_processed = None
         self._review = False
@@ -279,22 +280,24 @@ class EmailThread(EmailPost):
     def participants(self, mapping):
         people = dict()
         for msg in self.msgs:
+            if msg.bot:
+                continue
             for person in msg.get_from_mapped(mapping):
                 if person not in people:
                     people[person] = 0
                 people[person] += 1
-        remove_bots(people)
         return people
 
     def authors(self, mapping):
         people = dict()
         for msg in self.msgs:
+            if msg.bot:
+                continue
             if msg is self.root_msg or msg.is_pr() or msg.is_patch():
                 for person in msg.get_from_mapped(mapping):
                     if person not in people:
                         people[person] = 0
                     people[person] += 1
-        remove_bots(people)
         return people
 
     def timespan(self):
@@ -377,16 +380,6 @@ class ChangeSet:
             print('ChangeSet subject has no ]:', subject)
             return subject
         return subject[idx + 1:]
-
-
-def remove_bots(people_dict):
-    for bot in ['<patchwork-bot+netdevbpf@kernel.org>',
-                'kernel test robot <lkp@intel.com>',
-                '<pr-tracker-bot@kernel.org>',
-                'syzbot <syzbot@syzkaller.appspotmail.com>',
-                '<bot+bpf-ci@kernel.org>',
-                '<patchwork-bot+bluetooth@kernel.org>']:
-        people_dict.pop(bot, 0)
 
 
 def is_bot(msg):

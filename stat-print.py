@@ -177,72 +177,44 @@ def print_no_commit_ranking(args, mlA, mlB):
     print_columns(left, right)
 
 
-def bot_reply_ranking(ppl_stat, bot, min_postings, pct):
-    """Rank by replies from the bot, absolute or per 100 postings"""
+def bot_reply_ranking(ppl_stat, bot, min_postings):
+    """Rank by replies from the bot per posting"""
     ranking = []
     for person, stat in ppl_stat.items():
         author = stat['author']
+        postings = author.get('postings', 0)
         replies = author.get('bot-replies', {}).get(bot, 0)
-        if not replies:
+        if not replies or postings < max(min_postings, 1):
             continue
-        if pct:
-            if author['postings'] < max(min_postings, 1):
-                continue
-            replies = 100 * replies / author['postings']
-        ranking.append((replies, person))
-    ranking.sort(key=lambda entry: (-entry[0], entry[1]))
+        ranking.append((100 * replies / postings, postings, person))
+    ranking.sort(key=lambda e: (-e[0], -e[1], e[2]))
     return ranking
 
 
-def get_bot_reply_top(prev_stat, ppl_stat, bot, n, min_postings, caption):
-    """Most replies from the bot, with movement since the previous release"""
-    ppl_prev = [person for _, person in
-                bot_reply_ranking(prev_stat, bot, min_postings, pct=False)]
-    ranking = bot_reply_ranking(ppl_stat, bot, min_postings, pct=False)
-
-    lines = [f'{caption}:']
-    for i, (replies, p) in enumerate(ranking[:n], 1):
-        move = rank_move(ppl_prev, p, i, n)
-        lines.append(f"  {i:2} ({move:>3}) [{replies:4}] {p.split(' <')[0]}")
-    return lines
-
-
-def get_bot_reply_pct_top(ppl_stat, bot, n, min_postings, caption):
-    """Most replies from the bot as a percentage of postings"""
-    ranking = bot_reply_ranking(ppl_stat, bot, min_postings, pct=True)
+def get_bot_reply_top(ppl_stat, bot, n, min_postings, caption):
+    """Highest share of postings the bot replied to"""
+    ranking = bot_reply_ranking(ppl_stat, bot, min_postings)
 
     # Bots also reply to cover letters, so this can go over 100%
     lines = [f'{caption} (min {min_postings}):']
-    for i, (pct, p) in enumerate(ranking[:n], 1):
-        postings = ppl_stat[p]['author']['postings']
-        lines.append(f"  {i:2} [{pct:5.1f}% of {postings:4}]"
+    for i, (pct, postings, p) in enumerate(ranking[:n], 1):
+        lines.append(f"  {i:2} [{pct:2.0f}% of {postings:3}]"
                      f" {p.split(' <')[0]}")
     return lines
 
 
-def print_bot_replies(args, mlA, mlB):
-    """Who the review and testing bots reply to the most, per bot"""
+def print_bot_replies(args, mlB):
+    """Who the review and testing bots reply to the most, people and companies"""
     n = 10 + args.top_extra
     for bot, total in sorted(mlB.get('bot-replies', {}).items(),
                              key=lambda entry: -entry[1]):
         print(f'Replies from {bot}: {total}')
-        if args.bot_pct_only:
-            left = get_bot_reply_pct_top(mlB['individual'], bot, n,
-                                         args.bot_min_postings,
-                                         'Per posting, people')
-            right = get_bot_reply_pct_top(mlB['corporate'], bot, n,
-                                          args.bot_corp_min_postings,
-                                          'Per posting, companies')
-            print_columns(left, right)
-            continue
-        for key, min_postings in (('individual', args.bot_min_postings),
-                                  ('corporate', args.bot_corp_min_postings)):
-            name = 'people' if key == 'individual' else 'companies'
-            left = get_bot_reply_top(mlA[key], mlB[key], bot, n, min_postings,
-                                     f'Most replies, {name}')
-            right = get_bot_reply_pct_top(mlB[key], bot, n, min_postings,
-                                          f'Per posting, {name}')
-            print_columns(left, right)
+        left = get_bot_reply_top(mlB['individual'], bot, n,
+                                 args.bot_min_postings, 'Per posting, people')
+        right = get_bot_reply_top(mlB['corporate'], bot, n,
+                                  args.bot_corp_min_postings,
+                                  'Per posting, companies')
+        print_columns(left, right)
 
 
 def print_author_balance(mlB, key, top_extra):
@@ -610,8 +582,6 @@ def main():
                         help="Min postings to rank someone on bot replies per posting")
     parser.add_argument('--bot-corp-min-postings', type=int, default=30,
                         help="As above, for the company ranking")
-    parser.add_argument('--bot-pct-only', default=False, action='store_true',
-                        help="Rank bot replies only per posting, skip the absolute counts")
     parser.add_argument('--filter-corp', type=str, default=None,
                         help="Show people only from a selected company")
     parser.add_argument('--filter-one', type=str)
@@ -687,7 +657,7 @@ def main():
                               args.posting_corp_best_min_commits,
                               args.posting_corp_worst_min_commits)
         print_no_commit_ranking(args, mlA, mlB)
-        print_bot_replies(args, mlA, mlB)
+        print_bot_replies(args, mlB)
         if mlB.get('change-sets'):
             print_change_set_stat(mlA, mlB)
 

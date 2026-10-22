@@ -8,6 +8,9 @@
 # We deliberately ignore the patchwork bot here and look for the patches in
 # the git tree instead. Plenty of netdev patches get merged via other trees
 # (bpf, wireless, netfilter...) which never produces a bot reply.
+#
+# While at it count the replies from the review and testing bots, per
+# author of the patch they replied to.
 
 import argparse
 import collections
@@ -31,6 +34,12 @@ NOT_A_PATCH = ['[syzbot] ', '[ANN]', 'Fw: [Bug ']
 
 BOTS = ['patchwork-bot+', 'lkp@intel.com', 'pr-tracker-bot@kernel.org',
         'syzbot@syzkaller.appspotmail.com', 'bot+bpf-ci@kernel.org']
+
+# Bots whose replies tell us something about the patch. Patchwork and
+# the pr-tracker only report that something got merged.
+REPLY_BOTS = ['netdev-bot+sashiko@kernel.org', 'netdev-bot+sinfo@kernel.org',
+              'bot+bpf-ci@kernel.org', 'lkp@intel.com',
+              'syzbot@syzkaller.appspotmail.com']
 
 # Maintainers link the posting they applied, both forms are in use
 MSGID_RE = re.compile(r'(?:patch\.msgid\.link/|lore\.kernel\.org/r/|'
@@ -96,9 +105,20 @@ def is_kernel_project(tag):
     return True
 
 
+def bot_address(msg):
+    """Address of the sender if it's one of REPLY_BOTS, None otherwise"""
+    _, addr = email.utils.parseaddr(str(msg.get('from') or ''))
+    # syzbot sends from a separate address for every bug
+    addr = re.sub(r'^syzbot\+[^@]*@', 'syzbot@', addr.lower())
+    return addr if addr in REPLY_BOTS else None
+
+
 def load_postings(msg_dir, count, maps):
-    """Every patch posting in the window, cover letters excluded"""
+    """Every patch posting in the window, cover letters kept separately,
+    and the bot replies, as (bot, message-id it replied to)"""
     postings = []
+    covers = {}
+    replies = []
     skipped = collections.Counter()
 
     for i in range(count):
@@ -114,6 +134,12 @@ def load_postings(msg_dir, count, maps):
         if not subj or not mid:
             continue
         subj = ' '.join(subj.split())
+
+        bot = bot_address(msg)
+        irt = (msg.get('in-reply-to') or '').split()
+        if bot and irt:
+            replies.append((bot, irt[0].strip('<>')))
+            continue
 
         # Skip replies, and anything which isn't tagged like a patch
         if subj[:4].lower() == 're: ' or not subj.startswith('['):
@@ -132,23 +158,28 @@ def load_postings(msg_dir, count, maps):
         if 'AUTOSEL' in tag or msg.get('X-stable') == 'review':
             skipped['stable'] += 1
             continue
-        if COVER_RE.search(tag):
-            continue
         if not is_kernel_project(tag):
             skipped['not-kernel'] += 1
             continue
 
+        mid = mid.strip().strip('<>')
+        people = [get_from_mapped(msg, m) for m in maps]
+        # Bots do reply to cover letters, the author is all we need there
+        if COVER_RE.search(tag):
+            covers[mid] = people
+            continue
+
         postings.append({
-            'mid': mid.strip().strip('<>'),
+            'mid': mid,
             'subject': subj[end + 1:].strip(),
-            'people': [get_from_mapped(msg, m) for m in maps],
+            'people': people,
         })
 
         if (i % 500) == 0:
             print(f'Reading messages {i}/{count}', end='\r')
 
     print(f'Patch postings: {len(postings)}  skipped: {dict(skipped)}')
-    return postings
+    return postings, covers, replies
 
 
 def index_tree(linux, ref, since):
@@ -180,7 +211,8 @@ def index_tree(linux, ref, since):
 
 def match_postings(postings, by_mid, by_subject, n_maps):
     """Count postings and the distinct commits they resulted in"""
-    stats = [collections.defaultdict(lambda: {'postings': 0, 'commits': set()})
+    stats = [collections.defaultdict(lambda: {'postings': 0, 'commits': set(),
+                                              'bot-replies': collections.Counter()})
              for _ in range(n_maps)]
     matched = collections.Counter()
     all_commits = set()
@@ -223,6 +255,28 @@ def match_postings(postings, by_mid, by_subject, n_maps):
     return stats, summary
 
 
+def match_bot_replies(postings, covers, replies, stats):
+    """Credit bot replies to the author of the patch they replied to"""
+    people = dict(covers)
+    for posting in postings:
+        people[posting['mid']] = posting['people']
+
+    summary = collections.Counter()
+    unmatched = 0
+    for bot, mid in replies:
+        # Replies to replies, or to postings outside of the window
+        if mid not in people:
+            unmatched += 1
+            continue
+        summary[bot] += 1
+        for i, mapped in enumerate(people[mid]):
+            for person in mapped:
+                stats[i][person]['bot-replies'][bot] += 1
+
+    print(f'Bot replies: {dict(summary)}  unmatched: {unmatched}')
+    return dict(summary)
+
+
 def apply_stats(results, key, stats):
     """Fold the counts into the people already in the JSON"""
     unknown = 0
@@ -232,11 +286,13 @@ def apply_stats(results, key, stats):
             continue
         results[key][person]['author']['postings'] = counts['postings']
         results[key][person]['author']['commits'] = len(counts['commits'])
+        results[key][person]['author']['bot-replies'] = dict(counts['bot-replies'])
 
     # Everyone else posted nothing, be explicit so consumers can rely on it
     for person in results[key]:
         results[key][person]['author'].setdefault('postings', 0)
         results[key][person]['author'].setdefault('commits', 0)
+        results[key][person]['author'].setdefault('bot-replies', {})
 
     if unknown:
         print(f'  {key}: {unknown} posters not in the ml-stat results')
@@ -275,13 +331,16 @@ def main():
     corp_map = get_mail_map(db, corp=True)
     maps = [corp_map[:1], corp_map]
 
-    postings = load_postings(args.msg_files, results['count'], maps)
+    postings, covers, replies = load_postings(args.msg_files, results['count'],
+                                              maps)
     by_mid, by_subject = index_tree(args.linux, args.tree_ref, since)
     stats, summary = match_postings(postings, by_mid, by_subject, len(keys))
+    bot_summary = match_bot_replies(postings, covers, replies, stats)
 
     for i, key in enumerate(keys):
         apply_stats(results, key, stats[i])
     results['posting-efficiency'] = summary
+    results['bot-replies'] = bot_summary
     print('Posting efficiency:', summary['per_commit'],
           'postings per merged commit')
 

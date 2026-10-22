@@ -59,7 +59,9 @@ posting efficiency
 
 ``posting-stat.py`` counts patch postings per merged commit. Run it
 after ``ml-stat.py`` and from the same directory, it reuses the
-``msg-files`` cache. Search linux-next, and fetch it first::
+``msg-files`` cache. It also counts replies from the review and testing
+bots (``REPLY_BOTS``) per author of the patch they replied to.
+Search linux-next, and fetch it first::
 
   git -C $LINUX fetch linux-next
 

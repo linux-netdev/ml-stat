@@ -228,6 +228,15 @@ def print_bot_replies(args, mlA, mlB):
     for bot, total in sorted(mlB.get('bot-replies', {}).items(),
                              key=lambda entry: -entry[1]):
         print(f'Replies from {bot}: {total}')
+        if args.bot_pct_only:
+            left = get_bot_reply_pct_top(mlB['individual'], bot, n,
+                                         args.bot_min_postings,
+                                         'Per posting, people')
+            right = get_bot_reply_pct_top(mlB['corporate'], bot, n,
+                                          args.bot_corp_min_postings,
+                                          'Per posting, companies')
+            print_columns(left, right)
+            continue
         for key, min_postings in (('individual', args.bot_min_postings),
                                   ('corporate', args.bot_corp_min_postings)):
             name = 'people' if key == 'individual' else 'companies'
@@ -603,6 +612,8 @@ def main():
                         help="Min postings to rank someone on bot replies per posting")
     parser.add_argument('--bot-corp-min-postings', type=int, default=30,
                         help="As above, for the company ranking")
+    parser.add_argument('--bot-pct-only', default=False, action='store_true',
+                        help="Rank bot replies only per posting, skip the absolute counts")
     parser.add_argument('--filter-corp', type=str, default=None,
                         help="Show people only from a selected company")
     parser.add_argument('--filter-one', type=str)

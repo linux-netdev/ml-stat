@@ -52,6 +52,8 @@ Example use::
 		      antonio@openvpn.net \
 		      sven@narfation.org
 
+We use merge point of previous -next PR as ``start-commit``.
+
 posting efficiency
 ------------------
 

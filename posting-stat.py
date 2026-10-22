@@ -45,6 +45,9 @@ REPLY_BOTS = ['netdev-bot+sashiko@kernel.org', 'netdev-bot+sinfo@kernel.org',
 MSGID_RE = re.compile(r'(?:patch\.msgid\.link/|lore\.kernel\.org/r/|'
                       r'Message-I[dD]:\s*<)([^\s>]+)')
 COVER_RE = re.compile(r'\b0+/\d')
+# Stable branch in the subject tag: 6.1.y, v6.1.y, linux-6.1.y, 5.10, stable...
+STABLE_TOKEN_RE = re.compile(r'^(stable\S*|(linux-)?v?\d+\.\d+(\.\d+)?(\.y|-stable)?)$',
+                             re.IGNORECASE)
 FIXES_RE = re.compile(r'^Fixes:\s*[0-9a-f]{8,}', re.MULTILINE | re.IGNORECASE)
 
 
@@ -114,6 +117,17 @@ def bot_address(msg):
     return addr if addr in REPLY_BOTS else None
 
 
+def is_stable_backport(subj):
+    """Subject tag names a stable branch, e.g. [PATCH 6.1.y] or [PATCH stable 5.10]"""
+    subj = ' '.join(str(subj).split())
+    end = subj.find(']')
+    if not subj.startswith('[') or end == -1:
+        return False
+    # Only look at the tag, the subject proper may well mention a version
+    tokens = re.split(r'[\s,/]+', subj[1:end])
+    return any(STABLE_TOKEN_RE.match(t) for t in tokens)
+
+
 def has_fixes_tag(msg):
     """Posting carries a Fixes: tag"""
     body = msg.get_body(preferencelist=('plain',))
@@ -167,7 +181,8 @@ def load_postings(msg_dir, count, maps):
             continue
         tag = subj[1:subj.find(']')]
         # Stable backports are re-postings of merged work, not new development
-        if 'AUTOSEL' in tag or msg.get('X-stable') == 'review':
+        if 'AUTOSEL' in tag or msg.get('X-stable') == 'review' or \
+           is_stable_backport(subj):
             skipped['stable'] += 1
             continue
         if not is_kernel_project(tag):

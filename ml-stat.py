@@ -31,6 +31,9 @@ BOT_ADDR_RE = re.compile(r'^(patchwork-bot\+[^@]*@kernel\.org|'
                          r'pr-tracker-bot@kernel\.org|'
                          r'lkp@intel\.com|'
                          r'syzbot(\+[^@]*)?@(syzkaller\.appspotmail\.com|kernel\.org))$')
+# Stable branch in the subject tag: 6.1.y, v6.1.y, linux-6.1.y, 5.10, stable...
+STABLE_TOKEN_RE = re.compile(r'^(stable\S*|(linux-)?v?\d+\.\d+(\.\d+)?(\.y|-stable)?)$',
+                             re.IGNORECASE)
 
 
 class ParsingState:
@@ -380,6 +383,17 @@ class ChangeSet:
             print('ChangeSet subject has no ]:', subject)
             return subject
         return subject[idx + 1:]
+
+
+def is_stable_backport(subj):
+    """Subject tag names a stable branch, e.g. [PATCH 6.1.y] or [PATCH stable 5.10]"""
+    subj = ' '.join(str(subj).split())
+    end = subj.find(']')
+    if not subj.startswith('[') or end == -1:
+        return False
+    # Only look at the tag, the subject proper may well mention a version
+    tokens = re.split(r'[\s,/]+', subj[1:end])
+    return any(STABLE_TOKEN_RE.match(t) for t in tokens)
 
 
 def is_bot(msg):
@@ -939,7 +953,8 @@ def load_threads(full_misses):
             continue
 
         force_root = subj.startswith('Fw: [Bug')
-        if 'PATCH AUTOSEL' in subj or msg.get('X-stable') == 'review':
+        if 'PATCH AUTOSEL' in subj or msg.get('X-stable') == 'review' or \
+           is_stable_backport(subj):
             stable_mids.add(msg.mid)
             force_root |= True
             stats['skip-stable'] += 1

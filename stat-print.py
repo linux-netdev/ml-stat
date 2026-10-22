@@ -587,7 +587,7 @@ def main():
                         help="How many extra entries to add to the top n")
     parser.add_argument('--posting-best-min-commits', type=int, default=5,
                         help="Min merged commits for the lowest postings/commit ranking")
-    parser.add_argument('--posting-worst-min-commits', type=int, default=5,
+    parser.add_argument('--posting-worst-min-commits', type=int, default=2,
                         help="Min merged commits for the highest postings/commit ranking")
     parser.add_argument('--posting-corp-best-min-commits', type=int, default=10,
                         help="As above, for the company ranking")

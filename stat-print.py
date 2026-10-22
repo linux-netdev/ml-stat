@@ -93,13 +93,11 @@ def rank_move(ppl_prev, person, i, n):
 
 
 def print_columns(left, right):
-    # Long names would push the right column out of line
-    width = max([36] + [len(line) for line in left])
     # The two columns use different cutoffs, so they can differ in length
     for i in range(max(len(left), len(right))):
         l = left[i] if i < len(left) else ''
         r = right[i] if i < len(right) else ''
-        print(f'{l:{width}} {r}')
+        print(f'{l:36} {r:36}')
     print()
 
 

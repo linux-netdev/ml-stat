@@ -382,6 +382,9 @@ def remove_bots(people_dict):
 
 def email_datetime(m):
     mdate = m.get('date')
+    if not mdate:
+        # Some broken mailers omit Date, use the first (latest) Received hop
+        mdate = m.get('received').rsplit(';', 1)[1]
     dt = email.utils.parsedate_to_datetime(mdate)
     # "-0000" or missing zone gives a naive datetime, RFC 5322 says it's UTC
     if dt.tzinfo is None:

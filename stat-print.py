@@ -504,6 +504,13 @@ def print_general(ml, key):
         merged = f" merged: {merged}" if merged else ''
         print(f"{key}: postings: {pe['postings']}{merged}"
               f" commits: {pe['commits']}")
+        if 'fixes' in pe:
+            pct = 100 * pe['fixes'] / pe['postings']
+            line = f"{key}: postings with Fixes: {pe['fixes']} ({pct:.2f}%)"
+            if pe['postings_merged']:
+                pct = 100 * pe['fixes_merged'] / pe['postings_merged']
+                line += f" merged: {pe['fixes_merged']} ({pct:.2f}%)"
+            print(line)
 
     print()
 

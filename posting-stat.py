@@ -45,6 +45,7 @@ REPLY_BOTS = ['netdev-bot+sashiko@kernel.org', 'netdev-bot+sinfo@kernel.org',
 MSGID_RE = re.compile(r'(?:patch\.msgid\.link/|lore\.kernel\.org/r/|'
                       r'Message-I[dD]:\s*<)([^\s>]+)')
 COVER_RE = re.compile(r'\b0+/\d')
+FIXES_RE = re.compile(r'^Fixes:\s*[0-9a-f]{8,}', re.MULTILINE | re.IGNORECASE)
 
 
 def git(tree, cmd):
@@ -113,6 +114,17 @@ def bot_address(msg):
     return addr if addr in REPLY_BOTS else None
 
 
+def has_fixes_tag(msg):
+    """Posting carries a Fixes: tag"""
+    body = msg.get_body(preferencelist=('plain',))
+    if body is None:
+        return False
+    try:
+        return bool(FIXES_RE.search(body.get_content()))
+    except (LookupError, UnicodeError):
+        return False
+
+
 def load_postings(msg_dir, count, maps):
     """Every patch posting in the window, cover letters kept separately,
     and the bot replies, as (bot, message-id it replied to)"""
@@ -173,6 +185,7 @@ def load_postings(msg_dir, count, maps):
             'mid': mid,
             'subject': subj[end + 1:].strip(),
             'people': people,
+            'fixes': has_fixes_tag(msg),
         })
 
         if (i % 500) == 0:
@@ -227,6 +240,10 @@ def match_postings(postings, by_mid, by_subject, n_maps):
             matched['subject' if commit else 'unmatched'] += 1
         if commit:
             all_commits.add(commit)
+        if posting['fixes']:
+            matched['fixes'] += 1
+            if commit:
+                matched['fixes-merged'] += 1
 
         for i, people in enumerate(posting['people']):
             for person in people:
@@ -251,7 +268,8 @@ def match_postings(postings, by_mid, by_subject, n_maps):
     commits = len(all_commits)
     summary = {'postings': total, 'postings_merged': merged, 'commits': commits,
                'per_commit': round(total / commits, 4) if commits else 0,
-               'per_commit_merged': round(merged / commits, 4) if commits else 0}
+               'per_commit_merged': round(merged / commits, 4) if commits else 0,
+               'fixes': matched['fixes'], 'fixes_merged': matched['fixes-merged']}
     return stats, summary
 
 

@@ -24,6 +24,14 @@ from email.utils import parsedate_to_datetime
 
 args = None
 
+# All automated senders, for the share of list traffic which comes from bots
+BOT_ADDR_RE = re.compile(r'^(patchwork-bot\+[^@]*@kernel\.org|'
+                         r'netdev-bot\+[^@]*@kernel\.org|'
+                         r'bot\+bpf-ci@kernel\.org|'
+                         r'pr-tracker-bot@kernel\.org|'
+                         r'lkp@intel\.com|'
+                         r'syzbot(\+[^@]*)?@(syzkaller\.appspotmail\.com|kernel\.org))$')
+
 
 class ParsingState:
     def __init__(self):
@@ -33,6 +41,7 @@ class ParsingState:
         self.change_sets = dict()
         self.cs_stat = None  # set by parser, change set stats
         self.cs_accept = None  # set by parser, how many change sets landed
+        self.bot_msgs = 0
 
         # These will be replaced by EmailMsg() instances
         self.first_msg = dict()
@@ -378,6 +387,12 @@ def remove_bots(people_dict):
                 '<bot+bpf-ci@kernel.org>',
                 '<patchwork-bot+bluetooth@kernel.org>']:
         people_dict.pop(bot, 0)
+
+
+def is_bot(msg):
+    """Message sent by one of the bots, rather than a human"""
+    _, addr = email.utils.parseaddr(str(msg.get('from') or ''))
+    return bool(BOT_ADDR_RE.match(addr.lower()))
 
 
 def email_datetime(m):
@@ -923,6 +938,8 @@ def load_threads(full_misses):
         if (email_count - i) % 100 == 0 or i == 0:
             print(email_count - i, end='\r')
 
+        ps.bot_msgs += is_bot(msg)
+
         subj = msg.get('subject')
         if not subj:
             stats['skip'] += 1
@@ -1205,6 +1222,7 @@ def main():
 
         data |= {
             "count": email_count,
+            "bot_count": parsed.bot_msgs,
 
             "first_date": parsed.first_msg.get('date'),
             "last_date": parsed.last_msg.get('date'),

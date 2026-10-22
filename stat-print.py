@@ -471,6 +471,9 @@ def print_general(ml, key):
     print(f'{key}: start: {ml["first_date"]}\n\tend: {ml["last_date"]}')
     days = ml_stat_days(ml)
     print(f'{key}: messages: {ml["count"]} days: {days} ({round(ml["count"] / days)} msg/day)')
+    if 'bot_count' in ml:
+        pct = 100 * ml['bot_count'] / ml['count']
+        print(f'{key}: bot messages: {ml["bot_count"]} ({pct:.2f}%)')
     commits = ml["git"]["direct_commits"]
     print(f'{key}: direct commits: {commits} ({round(commits / days)} commits/day)')
     if "direct_test_commits" in ml["git"]:

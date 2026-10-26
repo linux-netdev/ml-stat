@@ -38,6 +38,9 @@ still on the submitting side of the thread, so their replies don't
 count as reviews, but they are only charged for the messages they
 wrote, like the cover letter.
 
+Pull requests never form change sets, ``author.pr`` counts the PRs
+each person sent.
+
 People often send from a personal address but author patches with
 a corporate one. Unless the mailmap joins the two, their replies to
 their own patches count as reviews, so run the self checks after

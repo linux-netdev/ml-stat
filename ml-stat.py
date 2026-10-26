@@ -1141,13 +1141,15 @@ def calc_ppl_stat(args, ps, db, corp):
         parti = thr.participants(use_map)
         for p in parti:
             if p not in ppl_stat:
-                ppl_stat[p] = {'author': {'cs': 0, 'thr': 0, 'msg': 0, 'pr_dur': 0},
+                ppl_stat[p] = {'author': {'cs': 0, 'thr': 0, 'msg': 0, 'pr': 0, 'pr_dur': 0},
                                'reviewer': {'cs': 0, 'thr': 0, 'msg': 0}}
             if p in authors:
                 ppl_stat[p]['author']['thr'] += 1
                 ppl_stat[p]['author']['msg'] += authors[p]
-                # Patches in the PR have their own authors, it's the sender's PR
+                # Patches in the PR have their own authors, it's the sender's PR.
+                # PRs never make change sets, so count them separately.
                 if thr.is_pr() and p in thr.root_msg.get_sender_mapped(use_map):
+                    ppl_stat[p]['author']['pr'] += 1
                     ppl_stat[p]['author']['pr_dur'] += thr.timespan()
             else:
                 ppl_stat[p]['reviewer']['thr'] += 1

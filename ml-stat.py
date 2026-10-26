@@ -34,6 +34,10 @@ BOT_ADDR_RE = re.compile(r'^(patchwork-bot\+[^@]*@kernel\.org|'
 # Stable branch in the subject tag: 6.1.y, v6.1.y, linux-6.1.y, 5.10, stable...
 STABLE_TOKEN_RE = re.compile(r'^(stable\S*|(linux-)?v?\d+\.\d+(\.\d+)?(\.y|-stable)?)$',
                              re.IGNORECASE)
+# In-body headers git am understands, at the very top of the body
+INBODY_HDR_RE = re.compile(r'^(From|Date|Subject):\s*(.*)$')
+# Separator line of git format-patch output, if someone pasted it in whole
+MBOX_FROM_RE = re.compile(r'^From [0-9a-f]{40} ')
 
 
 class ParsingState:
@@ -142,6 +146,7 @@ class EmailMsg(EmailPost):
         self._accept = None
         self._pw_cmd = False
         self._pw_accept = False
+        self._inbody_from = None
 
     def _process_body(self):
         if self._body_processed is not None:
@@ -202,28 +207,51 @@ class EmailMsg(EmailPost):
     def get_all(self, key):
         return self.msg.get_all(key)
 
-    def get_from_mapped(self, mappings):
-        ret = []
+    def inbody_from(self):
+        """Author of a patch posted on behalf of someone else, from the
+        in-body From: line, empty string if there isn't one"""
+        if self._inbody_from is not None:
+            return self._inbody_from
+        self._inbody_from = ''
+        if self.is_reply() or not self.is_patch():
+            return self._inbody_from
+
+        body = self.msg.get_body(preferencelist=('plain',))
+        if body is None:
+            return self._inbody_from
+        try:
+            lines = body.get_content().lstrip('\n').splitlines()
+        except (LookupError, UnicodeError):
+            return self._inbody_from
+        if lines and MBOX_FROM_RE.match(lines[0]):
+            lines = lines[1:]
+
+        for l in lines:
+            m = INBODY_HDR_RE.match(l)
+            if not m:
+                break
+            if m.group(1) != 'From':
+                continue
+            # git writes "Name <addr>", anything else is likely hand-typed garbage
+            if '<' in m.group(2) and '@' in email.utils.parseaddr(m.group(2))[1]:
+                self._inbody_from = m.group(2).strip()
+            break
+        return self._inbody_from
+
+    def get_sender_mapped(self, mappings):
+        """Whoever sent the message, even if they didn't write the patch in it"""
         from_list = self.msg.get_all('from')
         for addr in from_list:
             if 'via B4 Relay' in addr:
                 from_list = self.msg.get_all('X-Original-From')
                 break
+        return map_addrs(from_list, mappings)
 
-        for addr in from_list:
-            if '<' not in addr:
-                addr = '<' + addr + '>'
-
-            addr = addr.replace('"', "")
-
-            for mapping in mappings:
-                for m in mapping:
-                    if m[0] in addr:
-                        addr = m[1]
-                        break
-
-            ret.append(addr)
-        return ret
+    def get_from_mapped(self, mappings):
+        # Credit the real author, rather than whoever posted the patch
+        if self.inbody_from():
+            return map_addrs([self.inbody_from()], mappings)
+        return self.get_sender_mapped(mappings)
 
     def date(self):
         return email_datetime(self.msg)
@@ -289,6 +317,9 @@ class EmailThread(EmailPost):
                 if person not in people:
                     people[person] = 0
                 people[person] += 1
+            if msg.inbody_from():
+                for person in msg.get_sender_mapped(mapping):
+                    people.setdefault(person, 0)
         return people
 
     def authors(self, mapping):
@@ -301,6 +332,11 @@ class EmailThread(EmailPost):
                     if person not in people:
                         people[person] = 0
                     people[person] += 1
+                # Whoever sent someone else's patch is on the submitting side
+                # too, their replies are not reviews, but the patch isn't theirs
+                if msg.inbody_from():
+                    for person in msg.get_sender_mapped(mapping):
+                        people.setdefault(person, 0)
         return people
 
     def timespan(self):
@@ -400,6 +436,25 @@ def is_bot(msg):
     """Message sent by one of the bots, rather than a human"""
     _, addr = email.utils.parseaddr(str(msg.get('from') or ''))
     return bool(BOT_ADDR_RE.match(addr.lower()))
+
+
+def map_addrs(from_list, mappings):
+    """Turn From: style addresses into identities, via the mail maps"""
+    ret = []
+    for addr in from_list:
+        if '<' not in addr:
+            addr = '<' + addr + '>'
+
+        addr = addr.replace('"', "")
+
+        for mapping in mappings:
+            for m in mapping:
+                if m[0] in addr:
+                    addr = m[1]
+                    break
+
+        ret.append(addr)
+    return ret
 
 
 def email_datetime(m):
@@ -1091,7 +1146,8 @@ def calc_ppl_stat(args, ps, db, corp):
             if p in authors:
                 ppl_stat[p]['author']['thr'] += 1
                 ppl_stat[p]['author']['msg'] += authors[p]
-                if thr.is_pr():
+                # Patches in the PR have their own authors, it's the sender's PR
+                if thr.is_pr() and p in thr.root_msg.get_sender_mapped(use_map):
                     ppl_stat[p]['author']['pr_dur'] += thr.timespan()
             else:
                 ppl_stat[p]['reviewer']['thr'] += 1

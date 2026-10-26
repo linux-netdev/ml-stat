@@ -28,6 +28,21 @@ Example use::
 Before generating the stats it's recommended to run the self checks,
 to make sure that the email mailmap and parsing are okay.
 
+Patch authorship
+~~~~~~~~~~~~~~~~
+
+Patches sent on behalf of someone else carry the author in a ``From:``
+line at the top of the body (``git send-email`` adds it). Such patches
+are credited to that author, not to whoever sent them. The sender is
+still on the submitting side of the thread, so their replies don't
+count as reviews, but they are only charged for the messages they
+wrote, like the cover letter.
+
+People often send from a personal address but author patches with
+a corporate one. Unless the mailmap joins the two, their replies to
+their own patches count as reviews, so run the self checks after
+updating the mailmap.
+
 git stats
 ---------
 

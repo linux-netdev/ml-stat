@@ -11,6 +11,9 @@
 #
 # While at it count the replies from the review and testing bots, per
 # author of the patch they replied to.
+#
+# Postings are credited to the author of the patch (in-body From:), like
+# in ml-stat, not to whoever sent it on their behalf.
 
 import argparse
 import collections
@@ -49,6 +52,10 @@ COVER_RE = re.compile(r'\b0+/\d')
 STABLE_TOKEN_RE = re.compile(r'^(stable\S*|(linux-)?v?\d+\.\d+(\.\d+)?(\.y|-stable)?)$',
                              re.IGNORECASE)
 FIXES_RE = re.compile(r'^Fixes:\s*[0-9a-f]{8,}', re.MULTILINE | re.IGNORECASE)
+# In-body headers git am understands, at the very top of the body
+INBODY_HDR_RE = re.compile(r'^(From|Date|Subject):\s*(.*)$')
+# Separator line of git format-patch output, if someone pasted it in whole
+MBOX_FROM_RE = re.compile(r'^From [0-9a-f]{40} ')
 
 
 def git(tree, cmd):
@@ -76,6 +83,32 @@ def get_mail_map(db, corp):
     return use_map
 
 
+def inbody_from(msg):
+    """Author of a patch posted on behalf of someone else, from the in-body
+    From: line, None if there isn't one (same parsing as ml-stat.py)"""
+    body = msg.get_body(preferencelist=('plain',))
+    if body is None:
+        return None
+    try:
+        lines = body.get_content().lstrip('\n').splitlines()
+    except (LookupError, UnicodeError):
+        return None
+    if lines and MBOX_FROM_RE.match(lines[0]):
+        lines = lines[1:]
+
+    for line in lines:
+        m = INBODY_HDR_RE.match(line)
+        if not m:
+            break
+        if m.group(1) != 'From':
+            continue
+        # git writes "Name <addr>", anything else is likely hand-typed garbage
+        if '<' in m.group(2) and '@' in email.utils.parseaddr(m.group(2))[1]:
+            return m.group(2).strip()
+        break
+    return None
+
+
 def get_from_mapped(msg, mappings):
     ret = []
     from_list = msg.get_all('from')
@@ -85,6 +118,10 @@ def get_from_mapped(msg, mappings):
         if 'via B4 Relay' in addr:
             from_list = msg.get_all('X-Original-From') or from_list
             break
+    # Credit the real author, rather than whoever posted the patch
+    author = inbody_from(msg)
+    if author:
+        from_list = [author]
 
     for addr in from_list:
         if '<' not in addr:
@@ -328,7 +365,7 @@ def apply_stats(results, key, stats):
         results[key][person]['author'].setdefault('bot-replies', {})
 
     if unknown:
-        print(f'  {key}: {unknown} posters not in the ml-stat results')
+        print(f'  {key}: {unknown} authors not in the ml-stat results')
 
 
 def main():
